@@ -1,3 +1,44 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0px;
+    background: #cccccc;
+}
+
+h1 {
+    margin: 1%;
+    text-align: center;
+}
+
+#editor-container {
+    position: relative;
+    border: 2px solid #333333;
+    margin: 3vw;
+    width: 94vw;
+}
+
+#indicator {
+    position: absolute;
+    top: -8px; right: 2vw;
+    border: 2px solid #333333;
+    width: 32px;
+    height: 16px;
+}
+
+.indicator-edit {
+    background: #cccccc;
+}
+.indicator-compiling {
+    background: #ffff99;
+}
+.indicator-okay {
+    background: #99ff99;
+}
+.indicator-error {
+    background: #ff6666;
+}
+
+
+
 .credits {
     margin-top: 1em;
     text-align: center;

@@ -7,11 +7,13 @@ function startup() {
     setup_editor();
     setup_keys();
 
-    hilite(3);
+    //hilite(2);
 }
 
 
 function setup_editor() {
+
+    app.editor_change_timeout = null;
 
     app.editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
         lineNumbers: true,
@@ -26,6 +28,22 @@ function setup_editor() {
             "Cmd-T": function(_cm) { execute("debug"); },
         }
     });
+
+    app.editor.on("change", function(cm, change) {
+        editor_changed();
+    });
+}
+
+function editor_changed() {
+
+    if (app.editor_change_timeout != null) {
+        clearTimeout(app.editor_change_timeout);
+        app.editor_change_timeout = null;
+    }
+
+    app.editor_change_timeout = setTimeout(function() {
+        compile_background_launch();
+    },1200);
 }
 
 function setup_keys() {
@@ -52,6 +70,30 @@ function init_vars() {
 
     app = {};
     app.hilite = 0;
+    app.state = "(none)";
+    set_state("edit");
+    indicator("edit");
+    app.compile_indicator_timeout = null;
+}
+
+function set_state(st) {
+
+    console.log("status: " + app.state + " => " + st);
+    app.state = st;
+}
+
+function assert_state(required) {
+
+    if (app.state != required) {
+        console.error(
+            "INTERNAL: invalid state: "
+            + app.state + ", "
+            + "should be: "
+            + required
+        );
+        return;
+    }
+
 }
 
 function hilite(lineno) {
@@ -60,17 +102,27 @@ function hilite(lineno) {
         app.editor.removeLineClass(app.hilite, "background", "highlight");
     }
 
-    if (hilite > 0) {
+    if (lineno > 0) {
         app.editor.addLineClass(lineno, "background", "highlight");
+        app.hilite = lineno;
     }
-    app.hilite = lineno;
 }
 
+function indicator(status) {
+
+    var indicator = document.getElementById("indicator");
+
+    indicator.className = indicator.className
+        .split(' ')
+        .filter(className => !className.startsWith('indicator-'))
+        .join(' ');
+
+    indicator.classList.add("indicator-" + status);
+}
 
 function execute(mode) {
 
     hilite(0);
-    compile();
     app.exec_mode = mode;
 
     execute_step(1)
@@ -82,24 +134,51 @@ function execute_step(lineno) {
     instr["fn"](instr);
 }
 
-function compile() {
+function compile_background_launch() {
 
-    app.code = [];
-    app.line = 1;
+    if (app.state == "compiling") {
+        app.compiler.terminate();
+    } else {
+        app.compile_saved_state = app.state;
+        set_state("compiling");
+        indicator("compiling");
+        if (app.compile_indicator_timeout != null) {
+            clearTimeout(app.compile_indicator_timeout);
+            app.compile_indicator_timeout = null;
+        }
+    }
 
-    compile_append({"fn": debug_log, "log": "hello"});
+    app.compiler = new Worker("compiler.js");
+    app.compiler.onmessage = function(event) {
+        compile_background_finished(event.data);
+    }
 
-    console.group("code");
-    console.log(app.browser_code);
-    console.groupEnd();
+    app.compiler.postMessage("X");
+
 }
 
-function compile_append(instr) {
+function compile_background_finished(data) {
 
-    app.code[app.line] = instr;
-    app.line += 1;
-}
+    app.state = app.compile_saved_state;
 
-function debug_log(args) {
-    console.log(args["log"]);
+    if (false) {
+
+        indicator("okay");
+
+        if (app.compile_indicator_timeout != null) {
+            clearTimeout(app.compile_indicator_timeout);
+            app.compile_indicator_timeout = null;
+        }
+        app.compile_indicator_timeout = setTimeout(function() {
+            if (app.state == "edit") {
+                indicator("edit");
+            }
+        }, 5000);
+
+    } else {
+
+        indicator("error");
+
+    }
+
 }

@@ -2,7 +2,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeMirror Plain Text Editor</title>
+    <title>BJTCPU emulator</title>
 
     <link rel="stylesheet" href="codemirror.min.css">
     <link rel="stylesheet" href="dracula.min.css">
@@ -11,28 +11,24 @@
     <script src="codemirror.min.js"></script>
     <script src="bjtcpu.js"></script>
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        .editor-container {
-            border: 1px solid #ddd;
-            margin-top: 10px;
-        }
-    </style>
 </head>
 <body>
 
     <h1>BJTCPU</h1>
-    <textarea id="editor">
+
+    <div id="middle">
+        <div id="editor-container">
+            <textarea id="editor">
 ;> a
 ;> b
 ; it's only a comment
 :> c
 
 ;> d
-    </textarea>
+            </textarea>
+            <div id="indicator"></div>
+        </div>
+    </div>
 
     <div class="credits">
         Editor: <a href="https://codemirror.net/">CodeMirror</a>

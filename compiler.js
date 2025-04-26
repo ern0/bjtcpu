@@ -1,26 +1,26 @@
-self.addEventListener("message", function(e) {
+self.addEventListener("message", function(event) {
 
-    console.log("COMPILING" + e.data);
+    result = compile(event.data);
 
     setTimeout(function() {
-        postMessage("COMPILER DONE");
-    }, 2500);
+        postMessage(result);
+    }, 500);
 
 }, false);
 
 
-function compile() {
+function compile(packet) {
 
+    app = {};
     app.prog = [];
     app.line = 1;
     app.mem = [];
     app.ptr = 0;
 
-    compile_append({"fn": debug_log, "log": "hello"});
+    result = {};
+    result.status = "okay";
 
-    console.group("code");
-    console.log(app.prog);
-    console.groupEnd();
+    return result;
 }
 
 function compile_append(instr) {

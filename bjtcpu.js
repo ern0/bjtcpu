@@ -41,6 +41,21 @@ function editor_changed() {
         app.editor_change_timeout = null;
     }
 
+    if (app.compile_indicator_timeout != null) {
+        clearTimeout(app.compile_indicator_timeout);
+        app.compile_indicator_timeout = null;
+    }
+
+    if (app.state == "compiling") {
+        app.compiler.terminate();
+    }
+
+    if (app.state != "edit") {
+        set_state("edit");
+    }
+
+    indicator("edit");
+
     app.editor_change_timeout = setTimeout(function() {
         compile_background_launch();
     },1200);
@@ -78,22 +93,8 @@ function init_vars() {
 
 function set_state(st) {
 
-    console.log("status: " + app.state + " => " + st);
+    //console.log("status: " + app.state + " => " + st);
     app.state = st;
-}
-
-function assert_state(required) {
-
-    if (app.state != required) {
-        console.error(
-            "INTERNAL: invalid state: "
-            + app.state + ", "
-            + "should be: "
-            + required
-        );
-        return;
-    }
-
 }
 
 function hilite(lineno) {
@@ -120,20 +121,6 @@ function indicator(status) {
     indicator.classList.add("indicator-" + status);
 }
 
-function execute(mode) {
-
-    hilite(0);
-    app.exec_mode = mode;
-
-    execute_step(1)
-}
-
-function execute_step(lineno) {
-
-    var instr = app.code[lineno];
-    instr["fn"](instr);
-}
-
 function compile_background_launch() {
 
     if (app.state == "compiling") {
@@ -153,15 +140,18 @@ function compile_background_launch() {
         compile_background_finished(event.data);
     }
 
-    app.compiler.postMessage("X");
-
+    packet = {};
+    packet["source"] = app.editor.getValue();
+    app.compiler.postMessage(packet);
 }
 
 function compile_background_finished(data) {
 
     app.state = app.compile_saved_state;
 
-    if (false) {
+    console.log(data);
+
+    if (data.status == "okay") {
 
         indicator("okay");
 
@@ -181,4 +171,18 @@ function compile_background_finished(data) {
 
     }
 
+}
+
+function execute(mode) {
+
+    hilite(0);
+    app.exec_mode = mode;
+
+    execute_step(1)
+}
+
+function execute_step(lineno) {
+
+    var instr = app.code[lineno];
+    instr["fn"](instr);
 }

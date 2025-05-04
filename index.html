@@ -19,14 +19,12 @@
     <div id="middle">
         <div id="editor-container">
 <textarea id="editor">
-    x: db 1,2,3
-    dn 1,2,3,C   ; komment
-    ;dn e987
-    ;dn -3
-    ;db 1, 2, $FF
-    ;db -3
-    ;db "ABC"
-    ;da $123
+
+x:  .nibble 1,2,3
+    ;.byte 1, 2, 3, "dada"
+    ;.address x - 1
+    ;.word 1200
+
 </textarea>
             <div id="indicator"></div>
         </div>

@@ -7,6 +7,7 @@ function startup() {
     setup_editor();
     setup_keys();
 
+    compile_background_launch();
     //hilite(2);
 }
 
@@ -135,7 +136,7 @@ function compile_background_launch() {
         }
     }
 
-    app.compiler = new Worker("compiler.js");
+    app.compiler = new Worker("compiler.js?" + (new Date()).getTime());
     app.compiler.onmessage = function(event) {
         compile_background_finished(event.data);
     }
@@ -148,8 +149,6 @@ function compile_background_launch() {
 function compile_background_finished(data) {
 
     app.state = app.compile_saved_state;
-
-    console.log(data);
 
     if (data.status == "okay") {
 

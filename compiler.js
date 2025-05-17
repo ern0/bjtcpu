@@ -8,8 +8,24 @@ self.addEventListener("message", function(event) {
 
 }, false);
 
+function compile(packet) {
 
-function split_line(str) {
+    app = {}
+    app.prg_lines = {}
+
+    text = packet["source"].split("\n");
+    for (lineno in text) {
+
+        let line = new Line(lineno, text[lineno])
+        if (line.error != null) break;
+    }
+
+    result = {};
+    result.status = "okay";
+    return result;
+}
+
+function split(str) {
 
     const result = [];
     let current = "";
@@ -67,74 +83,62 @@ function split_line(str) {
     return result;
 }
 
-function compile(packet) {
+class Line {
 
-    app = {}
-    app.prg_lines = {}
+    constructor(lineno, text) {
 
-    text = packet["source"].split("\n");
-    for (lineno in text) {
-        const line_text = text[lineno];
-        const line_split = split_line(line_text);
-        if (line_split.length == 0) continue;
-        let line_obj = parse_line(lineno, line_split);
+        this.error = null;
+        this.lineno = lineno;
 
-        console.log(line_obj);
-        if (line_obj["error"] != null) break;
+        this.text_split = split(text);
+        if (this.text_split.length == 0) return;
+
+        this.parse_label();
+        this.parse_instr();
     }
 
-    result = {};
-    result.status = "okay";
-    return result;
-}
+    parse_label() {
 
-function parse_line(lineno, line_split) {
-
-    let line_obj = {};
-    line_obj["error"] = null;
-    line_obj["lineno"] = lineno;
-
-    parse_line_label(line_obj, line_split);
-    parse_line_instr(line_obj, line_split);
-
-    return line_obj;
-}
-
-function parse_line_label(line_obj, line_split) {
-
-    if (line_split[0][0] == ":") {
-        line_obj["label"] = line_split[0].split("^")[1];
-    } else {
-        line_obj["label"] = null;
+        if (this.text_split[0][0] == ":") {
+            this.label = this.text_split[0].split("^")[1];
+        } else {
+            this.label = null;
+        }
     }
-}
 
-function parse_line_instr(line_obj, line_split) {
+    parse_instr() {
 
-    let isntr_index = 0;
-    if (line_obj["lineno"]) instr_index = 1;
+        let instr_index = 0;
+        if (this.label) instr_index = 1;
 
-    const instr_orig = line_split[instr_index];
-    const instr_eff = instr_orig.toLowerCase();
-    line_obj["instr"] = instr_eff;
-    line_obj["args"] = line_split.slice(instr_index + 1);
+        this.instr_orig = this.text_split[instr_index];
+        this.instr_eff = this.instr_orig
+            .toLowerCase()
+            .split("^")[1];
 
-    parse_check_instr_nof_args(line_obj);
-}
+        this.args = this.text_split
+            .slice(instr_index + 1)
+            .map(item => {
+                return item.split("^")[1]
+            })
 
-function parse_check_instr_nof_args(line_obj) {
+        if (this.instr_eff[0] == ".") {
+            this.parse_pseudo_instr();
+        } else {
+            this.parse_real_instr();
+        }
 
-    if (line_obj["instr"][0] == ".") {
-        parse_check_pseudo_instr_nof_args(line_obj);
-    } else {
-        parse_check_real_instr_nof_args(line_obj);
+        console.warn(this.label)
+        console.warn(this.instr_eff);
+        console.warn(this.args);
     }
-}
 
-function parse_check_pseudo_instr_nof_args(line_obj) {
-    // TODO
-}
+    parse_pseudo_instr() {
+        console.log("pseudo:", this.instr_eff);
+    }
 
-function parse_check_real_instr_nof_args(line_obj) {
-    // TODO
-}
+    parse_real_instr() {
+        console.log("real:", this.instr_eff);
+    }
+
+} // class Line

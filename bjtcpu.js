@@ -48,7 +48,7 @@ function editor_changed() {
     }
 
     if (app.state == "compiling") {
-        app.compiler.terminate();
+        app.worker.terminate();
     }
 
     if (app.state != "edit") {
@@ -125,7 +125,7 @@ function indicator(status) {
 function compile_background_launch() {
 
     if (app.state == "compiling") {
-        app.compiler.terminate();
+        app.worker.terminate();
     } else {
         app.compile_saved_state = app.state;
         set_state("compiling");
@@ -136,21 +136,22 @@ function compile_background_launch() {
         }
     }
 
-    app.compiler = new Worker("compiler.js?" + (new Date()).getTime());
-    app.compiler.onmessage = function(event) {
+    app.worker = new Worker("compiler.js?" + (new Date()).getTime());
+    app.worker.onmessage = function(event) {
         compile_background_finished(event.data);
     }
 
     packet = {};
     packet["source"] = app.editor.getValue();
-    app.compiler.postMessage(packet);
+    app.worker.postMessage(packet);
 }
 
-function compile_background_finished(data) {
+function compile_background_finished(compiler) {
+    app.compiler = compiler;
 
     app.state = app.compile_saved_state;
 
-    if (data.status == "okay") {
+    if (compiler.error == null) {
 
         indicator("okay");
 

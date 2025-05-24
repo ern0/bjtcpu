@@ -1,29 +1,13 @@
 self.addEventListener("message", function(event) {
 
-    result = compile(event.data);
+    let compiler = new Compiler(event.data)
+    compiler.compile();
 
     setTimeout(function() {
-        postMessage(result);
+        postMessage(compiler);
     }, 500);
 
 }, false);
-
-function compile(packet) {
-
-    app = {}
-    app.prg_lines = {}
-
-    text = packet["source"].split("\n");
-    for (lineno in text) {
-
-        let line = new Line(lineno, text[lineno])
-        if (line.error != null) break;
-    }
-
-    result = {};
-    result.status = "okay";
-    return result;
-}
 
 function split(str) {
 
@@ -83,15 +67,69 @@ function split(str) {
     return result;
 }
 
+class Compiler {
+
+    constructor(data) {
+        this.packet = data;
+        this.lines = {};
+        this.symbols = {};
+        this.error = null;
+        this.address = 0;
+    }
+
+    compile() {
+
+        this.compile_round_1();
+        if (this.error == null) {
+            this.compile_round_2();
+        }
+
+        console.group("==== lines ====");
+        console.log(this.lines);
+        console.groupEnd();
+    }
+
+    compile_round_1() {
+
+        let text = this.packet["source"].split("\n");
+        for (let index in text) {
+            let lineno = 1 * index + 1;
+            let line = new Line(this)
+
+            line.round1(lineno, text[index]);
+
+            if (line.error != null) {
+                this.error = line;
+                break;
+            }
+            this.lines[lineno] = line;
+        }
+
+    }
+
+    compile_round_2() {
+
+        for (let lineno in this.lines) {
+            let line = this.lines[lineno];
+            line.round2();
+        }
+    }
+
+} // class Compiler
+
 class Line {
 
-    constructor(lineno, text) {
+    constructor(compiler) {
 
+        this.compiler = compiler;
         this.error = null;
-        this.lineno = lineno;
+    }
 
+    round1(lineno, text) {
+        this.round = 1;
+
+        this.lineno = lineno;
         this.text_split = split(text);
-        if (this.text_split.length == 0) return;
 
         this.parse_label();
         this.parse_instr();
@@ -99,46 +137,59 @@ class Line {
 
     parse_label() {
 
-        if (this.text_split[0][0] == ":") {
-            this.label = this.text_split[0].split("^")[1];
-        } else {
-            this.label = null;
-        }
+        this.label = null;
+
+        if (this.text_split.length == 0) return;
+        if (this.text_split[0][0] != ":") return;
+
+        this.label = this.text_split[0].split("^")[1];
     }
 
     parse_instr() {
 
-        let instr_index = 0;
-        if (this.label) instr_index = 1;
+        let instr_index = (this.label ? 1 : 0);
 
-        this.instr_orig = this.text_split[instr_index];
-        this.instr_eff = this.instr_orig
-            .toLowerCase()
-            .split("^")[1];
+        if (this.text_split.length <= instr_index) {
+            this.instr_orig = null;
+            this.instr_eff = ".nop";
+        } else {
+            this.instr_orig = this.text_split[instr_index];
+            this.instr_eff = this.instr_orig
+                .toLowerCase()
+                .split("^")[1];
+        }
 
         this.args = this.text_split
             .slice(instr_index + 1)
             .map(item => {
                 return item.split("^")[1]
-            })
+            });
 
-        if (this.instr_eff[0] == ".") {
+        if (this.instr_eff == null) {
+            this.instr_eff = ".nop";
+        } else  if (this.instr_eff[0] == ".") {
             this.parse_pseudo_instr();
         } else {
             this.parse_real_instr();
         }
-
-        console.warn(this.label)
-        console.warn(this.instr_eff);
-        console.warn(this.args);
     }
 
     parse_pseudo_instr() {
-        console.log("pseudo:", this.instr_eff);
+        this.size = 2;
     }
 
     parse_real_instr() {
-        console.log("real:", this.instr_eff);
+        this.data = [1, 2];
+    }
+
+    round2() {
+        this.round = 2;
+
+        console.group("---- line", this.lineno, "----");
+        console.log("label:", this.label)
+        console.log("instr", this.instr_eff);
+        console.log("args", this.args);
+        console.groupEnd()
     }
 
 } // class Line

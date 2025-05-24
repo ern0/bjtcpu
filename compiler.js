@@ -67,11 +67,18 @@ function split(str) {
     return result;
 }
 
+function is_valid_symbol(symbol) {
+
+    if (symbol.length == 0) return false;
+    return /^[a-zA-Z_]+$/.test(symbol);
+}
+
 class Compiler {
 
     constructor(data) {
         this.packet = data;
         this.lines = {};
+        this.memory = [];
         this.symbols = {};
         this.error = null;
         this.address = 0;
@@ -87,6 +94,15 @@ class Compiler {
         console.group("==== lines ====");
         console.log(this.lines);
         console.groupEnd();
+
+        console.group("==== memory ====");
+        console.log(this.memory);
+        console.groupEnd();
+
+        console.group("==== symbols ====");
+        console.log(this.symbols);
+        console.groupEnd();
+
     }
 
     compile_round_1() {
@@ -97,21 +113,48 @@ class Compiler {
             let line = new Line(this)
 
             line.round1(lineno, text[index]);
+            if (line.error != null) return;
 
-            if (line.error != null) {
-                this.error = line;
-                break;
-            }
             this.lines[lineno] = line;
         }
 
     }
 
+    add_label(line) {
+
+        let label = line.label;
+        if (label in this.symbols) {
+            this.report_error("duplicate label", line);
+        }
+
+        this.symbols[label] = line;
+    }
+
+    report_error(message, line) {
+
+        if (this.error == null) {
+            this.error = {};
+            this.error.message = message + ", line " + line.lineno;
+            this.error.line = line;
+        }
+    }
+
     compile_round_2() {
 
+        this.pc = 0;
+
         for (let lineno in this.lines) {
+
             let line = this.lines[lineno];
             line.round2();
+
+            if (line.size == 0) continue;
+
+            for (let index = 0; index < line.size; index++) {
+                let value = line.data[index];
+                this.memory[this.pc] = new Nibble(this, value, line);
+                this.pc += 1;
+            }
         }
     }
 
@@ -126,23 +169,40 @@ class Line {
     }
 
     round1(lineno, text) {
-        this.round = 1;
 
+        this.round = 1;
         this.lineno = lineno;
+        this.original = text;
         this.text_split = split(text);
 
         this.parse_label();
+        if (this.compiler.error) return;
         this.parse_instr();
+
+        this.size = 2; ////
+
     }
 
     parse_label() {
 
         this.label = null;
 
-        if (this.text_split.length == 0) return;
+        if (this.text_split.length == 0) {
+            let check = this.original.trim();
+            if (check == "") return;
+            if (check[0] == ";") return;
+            this.compiler.report_error("missing label", this);
+            return;
+        }
+
         if (this.text_split[0][0] != ":") return;
 
         this.label = this.text_split[0].split("^")[1];
+        if (is_valid_symbol(this.label)) {
+            this.compiler.add_label(this);
+        } else {
+            this.compiler.report_error("invalid label", this);
+        }
     }
 
     parse_instr() {
@@ -172,24 +232,30 @@ class Line {
         } else {
             this.parse_real_instr();
         }
+
     }
 
     parse_pseudo_instr() {
-        this.size = 2;
     }
 
     parse_real_instr() {
-        this.data = [1, 2];
     }
 
     round2() {
+
         this.round = 2;
 
-        console.group("---- line", this.lineno, "----");
-        console.log("label:", this.label)
-        console.log("instr", this.instr_eff);
-        console.log("args", this.args);
-        console.groupEnd()
+        this.data = [1, 2]; ////
+
     }
 
 } // class Line
+
+class Nibble {
+
+    constructor(compiler, value, line) {
+        this.compiler = compiler;
+        this.value = value;
+        this.line = line;
+    }
+}

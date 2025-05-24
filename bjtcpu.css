@@ -37,13 +37,26 @@ h1 {
     background: #ff6666;
 }
 
-
+#error {
+    text-align: center;
+    font-weight: bold;
+    color: #660000;
+    border: #660000 1px solid;
+    background: #ff9999;
+    width: 80%;
+    margin: auto;
+    padding: 2px 4px 2px 4px;
+}
 
 .credits {
     margin-top: 1em;
     text-align: center;
 }
 
-.highlight {
+.highlight_actual {
     background-color: #336699;
+}
+
+.highlight_error {
+    background-color: #993333;
 }

@@ -88,20 +88,22 @@ class Compiler {
         this.add_symbol("label", line.label, 3, this.pc, line);
     }
 
-    add_symbol(type, name, size, value, line) {
+    add_symbol(type, orig_name, size, value, line) {
 
-        if (name in this.symbols) {
-            const dupe_type = this.symbols[name]["type"];
+        const eff_name = orig_name.toLowerCase();
+
+        if (eff_name in this.symbols) {
+            const dupe_type = this.symbols[eff_name]["type"];
             this.report_error(
                 type
-                +' "' + name + '"'
+                +' "' + orig_name + '"'
                 + " is already defined as "
                 + dupe_type
                 ,line
             );
         }
 
-        this.symbols[name] = new Symbol(type, name, size, value);
+        this.symbols[eff_name] = new Symbol(type, orig_name, size, value);
     }
 
     report_error(message, line) {
@@ -140,6 +142,7 @@ class Line {
 
         this.compiler = compiler;
         this.error = null;
+        this.size = 0;
     }
 
     report_error(message) {
@@ -153,12 +156,13 @@ class Line {
         this.original = text;
 
         this.parts = split(this.original);
-
         if (this.parts.length == 0) return;
         if (this.parts[0].substring(0, 1) == ";") return;
-        this.parse_label();
 
-        this.size = 2; ////
+        this.parse_label();
+        if (this.error == null) {
+            this.parse_instr();
+        }
 
     }
 
@@ -198,23 +202,22 @@ class Line {
 
     parse_instr() {
 
-        let instr_index = (this.label ? 1 : 0);
+        const instr_index = ( this.label == null ? 0 : 1 );
 
-        if (this.text_split.length <= instr_index) {
+        if (this.parts.length <= instr_index) {
             this.instr_orig = null;
             this.instr_eff = ".nop";
-        } else {
-            this.instr_orig = this.text_split[instr_index];
-            this.instr_eff = this.instr_orig
-                .toLowerCase()
-                .split("^")[1];
+            this.args = [];
+            return;
         }
 
-        this.args = this.text_split
-            .slice(instr_index + 1)
-            .map(item => {
-                return item.split("^")[1]
-            });
+        this.instr_orig = this.parts[instr_index];
+        this.instr_eff = this.instr_orig.toLowerCase();
+
+        this.args = this.parts
+            .slice(instr_index + 1);
+///////////////////////////////////////////////////
+        console.log(this.instr_eff, this.args);
 
         if (this.instr_eff == null) {
             this.instr_eff = ".nop";

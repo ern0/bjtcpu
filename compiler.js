@@ -9,73 +9,30 @@ self.addEventListener("message", function(event) {
 
 }, false);
 
-function split(str) {
-
-    const result = [];
-    let current = "";
-    let inside_quote = null;
-    let skip_rest = false;
-    let last_delim = ""
-
-    for (let i = 0; i < str.length; i++) {
-        let char = str[i];
-
-        if (skip_rest) continue;
-
-        if ((char == '"') || (char == "'")) {
-            if (inside_quote == char) {
-                inside_quote = null;
-            } else if (inside_quote == null) {
-                inside_quote = char;
-            }
-            continue;
-        }
-
-        if (inside_quote) {
-            if (char != inside_quote) current += char;
-            continue;
-        }
-
-        if (char == ';') {
-            skip_rest = true;
-            continue;
-        }
-
-        char = char.replace("\t", " ");
-
-        if (char == ':' || char == ',' || char == ' ') {
-            if (current.trim()) {
-                if (char == ":") {
-                    result.push(":^" + current.trim());
-                    last_delim = "";
-                } else {
-                    result.push(last_delim + "^" + current.trim());
-                    last_delim = char;
-                }
-            }
-            current = '';
-            continue;
-        }
-
-        current += char;
-    }
-
-    if (current.trim()) {
-        result.push(last_delim + "^" + current.trim());
-    }
-
-    return result;
-}
-
 function is_valid_symbol(symbol) {
 
     if (symbol.length == 0) return false;
-    return /^[a-zA-Z_]+$/.test(symbol);
+    if (/^\d/.test(symbol)) return false;
+    return /^[a-zA-Z0-9_]+$/.test(symbol);
+}
+
+function split(line) {
+
+    const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
+    const matches = [];
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+        matches.push(match[1] || match[2] || match[0]);
+    }
+
+    return matches;
 }
 
 class Compiler {
 
     constructor(data) {
+
         this.packet = data;
         this.lines = {};
         this.memory = [];
@@ -107,6 +64,8 @@ class Compiler {
 
     compile_round_1() {
 
+        this.pc = 0;
+
         let text = this.packet["source"].split("\n");
         for (let index in text) {
             let lineno = 1 * index + 1;
@@ -121,20 +80,30 @@ class Compiler {
     }
 
     add_label(line) {
+        this.add_symbol("label", line.label, 3, this.pc, line);
+    }
 
-        let label = line.label;
-        if (label in this.symbols) {
-            this.report_error("duplicate label", line);
+    add_symbol(type, name, size, value, line) {
+
+        if (name in this.symbols) {
+            const dupe_type = this.symbols[name]["type"];
+            this.report_error(
+                type
+                +' "' + name + '"'
+                + " is already defined as "
+                + dupe_type
+                , line
+            );
         }
 
-        this.symbols[label] = line;
+        this.symbols[name] = new Symbol(type, name, size, value);
     }
 
     report_error(message, line) {
 
         if (this.error == null) {
             this.error = {};
-            this.error.message = message + ", line " + line.lineno;
+            this.error.message = message + " &ndash; line " + line.lineno;
             this.error.line = line;
         }
     }
@@ -173,11 +142,12 @@ class Line {
         this.round = 1;
         this.lineno = lineno;
         this.original = text;
-        this.text_split = split(text);
 
+        this.parts = split(this.original);
+
+        if (this.parts.length == 0) return;
+        if (this.parts[0].substring(0, 1) == ";") return;
         this.parse_label();
-        if (this.compiler.error) return;
-        this.parse_instr();
 
         this.size = 2; ////
 
@@ -186,22 +156,34 @@ class Line {
     parse_label() {
 
         this.label = null;
+        const len = this.parts[0].length;
+        let last_char = this.parts[0].substring(len - 1, len);
 
-        if (this.text_split.length == 0) {
-            let check = this.original.trim();
-            if (check == "") return;
-            if (check[0] == ";") return;
-            this.compiler.report_error("missing label", this);
-            return;
-        }
+        this.check_multipart_label();
+        if (this.compiler.error != null) return;
+        if (last_char != ":") return;
 
-        if (this.text_split[0][0] != ":") return;
-
-        this.label = this.text_split[0].split("^")[1];
-        if (is_valid_symbol(this.label)) {
+        const candidate = this.parts[0].substring(0, len - 1);
+        if (is_valid_symbol(candidate)) {
+            this.label = candidate;
             this.compiler.add_label(this);
         } else {
-            this.compiler.report_error("invalid label", this);
+            this.compiler.report_error("invalid label value", this);
+        }
+    }
+
+    check_multipart_label() {
+
+        if (this.parts.length < 2) return;
+
+        for (let i = 1; i < this.parts.length; i++) {
+
+            const len = this.parts[i].length;
+            let last_char = this.parts[i].substring(len - 1, len);
+            if (last_char == ":") {
+                this.compiler.report_error("invalid label format", this);
+                return;
+            }
         }
     }
 
@@ -250,6 +232,16 @@ class Line {
     }
 
 } // class Line
+
+class Symbol {
+
+    constructor(type, name, size, value) {
+        this.type = type;
+        this.name = name;
+        this.size = size;
+        this.value = value;
+    }
+}
 
 class Nibble {
 

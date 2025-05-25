@@ -41,6 +41,21 @@ class Compiler {
         this.address = 0;
     }
 
+    dump() {
+
+        console.group("==== lines ====");
+        console.log(this.lines);
+        console.groupEnd();
+
+        console.group("==== symbols ====");
+        console.log(this.symbols);
+        console.groupEnd();
+
+        console.group("==== memory ====");
+        console.log(this.memory);
+        console.groupEnd();
+    }
+
     compile() {
 
         this.compile_round_1();
@@ -48,18 +63,7 @@ class Compiler {
             this.compile_round_2();
         }
 
-        console.group("==== lines ====");
-        console.log(this.lines);
-        console.groupEnd();
-
-        console.group("==== memory ====");
-        console.log(this.memory);
-        console.groupEnd();
-
-        console.group("==== symbols ====");
-        console.log(this.symbols);
-        console.groupEnd();
-
+        this.dump();
     }
 
     compile_round_1() {
@@ -75,6 +79,7 @@ class Compiler {
             if (line.error != null) return;
 
             this.lines[lineno] = line;
+            this.pc += line.size;
         }
 
     }
@@ -92,7 +97,7 @@ class Compiler {
                 +' "' + name + '"'
                 + " is already defined as "
                 + dupe_type
-                , line
+                ,line
             );
         }
 
@@ -122,7 +127,7 @@ class Compiler {
             for (let index = 0; index < line.size; index++) {
                 let value = line.data[index];
                 this.memory[this.pc] = new Nibble(this, value, line);
-                this.pc += 1;
+                this.pc += line.size;
             }
         }
     }
@@ -135,6 +140,10 @@ class Line {
 
         this.compiler = compiler;
         this.error = null;
+    }
+
+    report_error(message) {
+        this.compiler.report_error(message, this);
     }
 
     round1(lineno, text) {
@@ -168,7 +177,7 @@ class Line {
             this.label = candidate;
             this.compiler.add_label(this);
         } else {
-            this.compiler.report_error("invalid label value", this);
+            this.report_error("invalid label value");
         }
     }
 
@@ -181,7 +190,7 @@ class Line {
             const len = this.parts[i].length;
             let last_char = this.parts[i].substring(len - 1, len);
             if (last_char == ":") {
-                this.compiler.report_error("invalid label format", this);
+                this.report_error("invalid label format");
                 return;
             }
         }

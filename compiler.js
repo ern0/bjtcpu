@@ -88,6 +88,25 @@ class Compiler {
         this.symbols = {};
         this.error = null;
         this.address = 0;
+
+        this.machine_instr_list = {
+            "mvi":  [0x0, 2],
+            "sta":  [0x1, 4],
+            "lda":  [0x2, 4],
+            "ad0":  [0x3, 4],
+            "ad1":  [0x4, 4],
+            "adc":  [0x5, 4],
+            "nand": [0x6, 4],
+            "nor":  [0x7, 4],
+            "rrm":  [0x8, 4],
+            "jmp":  [0x9, 4],
+            "jc":   [0xA, 4],
+            "jnc":  [0xB, 4],
+            "jz":   [0xC, 4],
+            "jnz":  [0xD, 4],
+            "jn":   [0xE, 4],
+            "jp":   [0xF, 4]
+        };
     }
 
     dump() {
@@ -202,16 +221,57 @@ class Line {
         this.round = 1;
         this.lineno = lineno;
         this.original = text;
+        this.size = 0;
 
         this.parts = split_by(this.original, " ");
         if (this.parts.length == 0) return;
         if (this.parts[0].substring(0, 1) == ";") return;
 
         this.parse_label();
-        if (this.error == null) {
-            this.parse_instr();
+        if (this.error != null) return;
+
+        this.parse_instr();
+        if (this.error != null) return;
+
+        this.size = this.get_instr_size();
+        if (this.error != null) return;
+    }
+
+    get_instr_size() {
+        if (this.instr_eff[0] == ".") return this.get_pseudo_instr_size();
+        return this.get_machine_instr_size();
+    }
+
+    get_pseudo_instr_size() {
+
+        if (!is_valid_symbol(this.instr_eff.substring(1,99))) {
+            this.report_error("malformed pseudo instruction");
+            return -1;
         }
 
+        if (this.instr_eff == ".nop") return 0;
+        if (this.instr_eff == ".nibble") return 1 * this.args.length;
+        if (this.instr_eff == ".byte") return 2 * this.args.length;
+        if (this.instr_eff == ".address") return 3 * this.args.length;
+
+        this.report_error("invalid pseudo instruction");
+        return -1;
+    }
+
+    get_machine_instr_size() {
+
+        if (!is_valid_symbol(this.instr_eff)) {
+            this.report_error("malformed instruction");
+            return -1;
+        }
+
+        if (!this.instr_eff in this.compiler.machine_instr_list) {
+            this.report_error("invalid instruction");
+            return -1;
+        }
+
+        let size = this.compiler.machine_instr_list[this.instr_eff][1];
+        return size;
     }
 
     parse_label() {
@@ -250,16 +310,7 @@ class Line {
 
     parse_instr() {
 
-        if (this.label != null) this.parts.shift();
-        this.parts.shift();
-
-        const str = this.parts.join(" ");
-        this.args = split_by(str, ",");
-        console.log(this.args);
-        return
-
         const instr_index = ( this.label == null ? 0 : 1 );
-
         if (this.parts.length <= instr_index) {
             this.instr_orig = null;
             this.instr_eff = ".nop";
@@ -270,23 +321,11 @@ class Line {
         this.instr_orig = this.parts[instr_index];
         this.instr_eff = this.instr_orig.toLowerCase();
 
-        console.log(instr_index, this.parts);
-///////////////////////////////////////////////////
+        if (this.label != null) this.parts.shift();
+        this.parts.shift();
 
-        if (this.instr_eff == null) {
-            this.instr_eff = ".nop";
-        } else  if (this.instr_eff[0] == ".") {
-            this.parse_pseudo_instr();
-        } else {
-            this.parse_real_instr();
-        }
-
-    }
-
-    parse_pseudo_instr() {
-    }
-
-    parse_real_instr() {
+        const str = this.parts.join(" ");
+        this.args = split_by(str, ",");
     }
 
     round2() {

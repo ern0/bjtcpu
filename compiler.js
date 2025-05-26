@@ -16,17 +16,66 @@ function is_valid_symbol(symbol) {
     return /^[a-zA-Z0-9_]+$/.test(symbol);
 }
 
-function split(line) {
+function split_by(line, by) {
 
-    const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
-    const matches = [];
-    let match;
+    const result = [];
+    let current = '';
+    let inside_single = false;
+    let inside_double = false;
 
-    while ((match = regex.exec(line)) !== null) {
-        matches.push(match[1] || match[2] || match[0]);
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char == "'" && !inside_double) {
+            if (inside_single) {
+                current += char;
+                result.push(current.trim());
+                current = "";
+                inside_single = false;
+            } else {
+                if (current.trim().length > 0) {
+                    result.push(current.trim());
+                    current = "";
+                }
+                current += char;
+                inside_single = true;
+            }
+            continue;
+        }
+
+        if (char == '"' && !inside_single) {
+            if (inside_double) {
+                current += char;
+                result.push(current.trim());
+                current = "";
+                inside_double = false;
+            } else {
+                if (current.trim().length > 0) {
+                    result.push(current.trim());
+                    current = "";
+                }
+                current += char;
+                inside_double = true;
+            }
+            continue;
+        }
+
+        if (char == by && !inside_single && !inside_double) {
+            if (current.trim().length > 0) {
+                result.push(current.trim());
+                current = "";
+            }
+            continue;
+        }
+
+        current += char;
     }
 
-    return matches;
+    if (current.trim().length > 0) {
+        result.push(current.trim());
+    }
+
+    return result;
 }
 
 class Compiler {
@@ -81,7 +130,6 @@ class Compiler {
             this.lines[lineno] = line;
             this.pc += line.size;
         }
-
     }
 
     add_label(line) {
@@ -155,7 +203,7 @@ class Line {
         this.lineno = lineno;
         this.original = text;
 
-        this.parts = split(this.original);
+        this.parts = split_by(this.original, " ");
         if (this.parts.length == 0) return;
         if (this.parts[0].substring(0, 1) == ";") return;
 
@@ -202,6 +250,14 @@ class Line {
 
     parse_instr() {
 
+        if (this.label != null) this.parts.shift();
+        this.parts.shift();
+
+        const str = this.parts.join(" ");
+        this.args = split_by(str, ",");
+        console.log(this.args);
+        return
+
         const instr_index = ( this.label == null ? 0 : 1 );
 
         if (this.parts.length <= instr_index) {
@@ -214,10 +270,8 @@ class Line {
         this.instr_orig = this.parts[instr_index];
         this.instr_eff = this.instr_orig.toLowerCase();
 
-        this.args = this.parts
-            .slice(instr_index + 1);
+        console.log(instr_index, this.parts);
 ///////////////////////////////////////////////////
-        console.log(this.instr_eff, this.args);
 
         if (this.instr_eff == null) {
             this.instr_eff = ".nop";

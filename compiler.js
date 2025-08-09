@@ -89,65 +89,30 @@ class Compiler {
         this.error = null;
         this.address = 0;
 
-        this.machine_instr_list = {
-            "mvi":  [0x0, 2],
-            "sta":  [0x1, 4],
-            "lda":  [0x2, 4],
-            "ad0":  [0x3, 4],
-            "ad1":  [0x4, 4],
-            "adc":  [0x5, 4],
-            "nand": [0x6, 4],
-            "nor":  [0x7, 4],
-            "rrm":  [0x8, 4],
-            "jmp":  [0x9, 4],
-            "jc":   [0xA, 4],
-            "jnc":  [0xB, 4],
-            "jz":   [0xC, 4],
-            "jnz":  [0xD, 4],
-            "jn":   [0xE, 4],
-            "jp":   [0xF, 4]
-        };
+        this.create_instr_list();
     }
 
     dump() {
 
-        console.group("==== lines ====");
-        console.log(this.lines);
-        console.groupEnd();
-
-        console.group("==== symbols ====");
-        console.log(this.symbols);
-        console.groupEnd();
-
-        console.group("==== memory ====");
-        console.log(this.memory);
-        console.groupEnd();
-    }
-
-    compile() {
-
-        this.compile_round_1();
-        if (this.error == null) {
-            this.compile_round_2();
+        if (this.error != null) {
+            console.log("dump:", this.error)
+            return;
         }
 
-        this.dump();
-    }
+        // console.group("==== lines ====");
+        // console.log(this.lines);
+        // console.groupEnd();
 
-    compile_round_1() {
+        // console.group("==== symbols ====");
+        // console.log(this.symbols);
+        // console.groupEnd();
 
-        this.pc = 0;
+        // console.group("==== memory ====");
+        // console.log(this.memory);
+        // console.groupEnd();
 
-        let text = this.packet["source"].split("\n");
-        for (let index in text) {
-            let lineno = 1 * index + 1;
-            let line = new Line(this)
-
-            line.round1(lineno, text[index]);
-            if (line.error != null) return;
-
-            this.lines[lineno] = line;
-            this.pc += line.size;
+        for (let ptr = 0; ptr < this.pc; ptr++) {
+            console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
         }
     }
 
@@ -182,6 +147,66 @@ class Compiler {
         }
     }
 
+    create_instr_list() {
+
+        // "instr": [opcode, size_fix, size_opcount_multiplier]
+        this.machine_instr_list = {
+            "mvi":      [0x0,  2,  0],
+            "sta":      [0x1,  4,  0],
+            "lda":      [0x2,  4,  0],
+            "ad0":      [0x3,  4,  0],
+            "ad1":      [0x4,  4,  0],
+            "adc":      [0x5,  4,  0],
+            "nand":     [0x6,  4,  0],
+            "nor":      [0x7,  4,  0],
+            "rrm":      [0x8,  4,  0],
+            "jmp":      [0x9,  4,  0],
+            "jc":       [0xA,  4,  0],
+            "jnc":      [0xB,  4,  0],
+            "jz":       [0xC,  4,  0],
+            "jnz":      [0xD,  4,  0],
+            "jn":       [0xE,  4,  0],
+            "jp":       [0xF,  4,  0],
+            //
+            "nop":      [null, 0,  0],
+            "call":     [null, ((2 * 3) + (4 * 3)),  0],
+            "ret":      [null, 4, 0],
+            //
+            ".nibble":  [null, 0,  1],
+            ".byte":    [null, 0,  2],
+            ".address": [null, 0,  3],
+            ".word":    [null, 0,  4],
+        };
+    }
+
+    compile() {
+
+        this.compile_round_1();
+        if (this.error != null) return;
+
+        this.compile_round_2();
+        if (this.error != null) return;
+
+        console.log(this.lines);
+    }
+
+    compile_round_1() {
+
+        this.pc = 0;
+
+        let text = this.packet["source"].split("\n");
+        for (let index in text) {
+
+            let lineno = 1 * index + 1;
+            let line = new Line(this)
+            line.round1(lineno, text[index]);
+            if (line.error != null) return;
+
+            this.lines[lineno] = line;
+            this.pc += line.size;
+        }
+    }
+
     compile_round_2() {
 
         this.pc = 0;
@@ -190,15 +215,14 @@ class Compiler {
 
             let line = this.lines[lineno];
             line.round2();
+            if (line.error != null) break;
 
-            if (line.size == 0) continue;
-
-            for (let index = 0; index < line.size; index++) {
-                let value = line.data[index];
-                this.memory[this.pc] = new Nibble(this, value, line);
-                this.pc += line.size;
-            }
+            this.pc += line.size;
         }
+    }
+
+    set_mem_relative(offset, nibble) {
+        this.memory[this.pc + offset] = nibble;
     }
 
 } // class Compiler
@@ -208,11 +232,11 @@ class Line {
     constructor(compiler) {
 
         this.compiler = compiler;
-        this.error = null;
         this.size = 0;
     }
 
     report_error(message) {
+        this.error = message;
         this.compiler.report_error(message, this);
     }
 
@@ -228,49 +252,31 @@ class Line {
         if (this.parts[0].substring(0, 1) == ";") return;
 
         this.parse_label();
-        if (this.error != null) return;
+        if (this.compiler.error != null) return;
 
         this.parse_instr();
-        if (this.error != null) return;
+        if (this.compiler.error != null) return;
 
         this.size = this.get_instr_size();
-        if (this.error != null) return;
+        if (this.compiler.error != null) return;
     }
 
     get_instr_size() {
-        if (this.instr_eff[0] == ".") return this.get_pseudo_instr_size();
-        return this.get_machine_instr_size();
-    }
 
-    get_pseudo_instr_size() {
-
-        if (!is_valid_symbol(this.instr_eff.substring(1,99))) {
-            this.report_error("malformed pseudo instruction");
-            return -1;
-        }
-
-        if (this.instr_eff == ".nop") return 0;
-        if (this.instr_eff == ".nibble") return 1 * this.args.length;
-        if (this.instr_eff == ".byte") return 2 * this.args.length;
-        if (this.instr_eff == ".address") return 3 * this.args.length;
-
-        this.report_error("invalid pseudo instruction");
-        return -1;
-    }
-
-    get_machine_instr_size() {
-
-        if (!is_valid_symbol(this.instr_eff)) {
+        let symbol_to_validate = this.instr_eff;
+        if (this.instr_eff[0] == ".") symbol_to_validate = this.instr_eff.substring(1,99);
+        if (!is_valid_symbol(symbol_to_validate)) {
             this.report_error("malformed instruction");
             return -1;
-        }
+         }
 
-        if (!this.instr_eff in this.compiler.machine_instr_list) {
+        if (!(this.instr_eff in this.compiler.machine_instr_list)) {
             this.report_error("invalid instruction");
             return -1;
         }
 
-        let size = this.compiler.machine_instr_list[this.instr_eff][1];
+        const info = this.compiler.machine_instr_list[this.instr_eff];
+        const size = info[1] + (info[2] * this.args.length);
         return size;
     }
 
@@ -331,9 +337,33 @@ class Line {
     round2() {
 
         this.round = 2;
+        this.report_error("break");
+    }
 
-        this.data = [1, 2]; ////
+    add_instruction(code) {
+        let nibble = new Nibble(this.compiler, code, this);
+        this.compiler.set_mem_relative(0, nibble);
+    }
 
+    add_address(address) {
+
+        const value1 = (address >> 0) & 0x0f;
+        const nibble1 = new Nibble(this.compiler, value1, this);
+        this.compiler.set_mem_relative(1, nibble1);
+
+        const value2 = (address >> 4) & 0x0f;
+        const nibble2 = new Nibble(this.compiler, value2, this);
+        this.compiler.set_mem_relative(2, nibble2);
+
+        const value3 = (address >> 8) & 0x0f;
+        const nibble3 = new Nibble(this.compiler, value3, this);
+        this.compiler.set_mem_relative(3, nibble3);
+    }
+
+    add_operand(op) {
+
+        const nibble = new Nibble(this.compiler, op, this);
+        this.compiler.set_mem_relative(1, nibble);
     }
 
 } // class Line

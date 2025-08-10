@@ -78,6 +78,31 @@ function split_by(line, by) {
     return result;
 }
 
+function lowercase_unquoted(str) {
+
+  let in_single_quote = false;
+  let in_double_quote = false;
+  let result = '';
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+
+    if (char == "'" && !in_double_quote) {
+      in_single_quote = !in_single_quote;
+    } else if (char == '"' && !in_single_quote) {
+      in_double_quote = !in_double_quote;
+    }
+
+    if (in_single_quote || in_double_quote) {
+      result += char;
+    } else {
+      result += char.toLowerCase();
+    }
+  }
+
+  return result;
+}
+
 class Compiler {
 
     constructor(data) {
@@ -275,8 +300,8 @@ class Line {
             return -1;
         }
 
-        const info = this.compiler.machine_instr_list[this.instr_eff];
-        const size = info[1] + (info[2] * this.args.length);
+        const instr_info = this.compiler.machine_instr_list[this.instr_eff];
+        const size = instr_info[1] + (instr_info[2] * this.args.length);
         return size;
     }
 
@@ -292,7 +317,7 @@ class Line {
 
         const candidate = this.parts[0].substring(0, len - 1);
         if (is_valid_symbol(candidate)) {
-            this.label = candidate;
+            this.label = candidate.toLowerCase();
             this.compiler.add_label(this);
         } else {
             this.report_error("invalid label value");
@@ -336,8 +361,49 @@ class Line {
 
     round2() {
 
-        this.round = 2;
+        const instr_info = this.compiler.machine_instr_list[this.instr_eff];
+        const opcode = instr_info[0];
+        const arg_size = instr_info[1];
+
+        if (opcode != null) {
+            this.round2_proc_instr(opcode, arg_size);
+            if (this.compiler.error != null) return;
+        } else {
+            // pass
+        }
+
+    }
+
+    round2_proc_instr(opcode, arg_size) {
+
+        this.check_arg_count();
+        if (this.compiler.error != null) return;
+
+
         this.report_error("break");
+
+    }
+
+    check_arg_count() {
+
+        let req_arg_count = 1;
+        if (this.instr_eff == "mvi") req_arg_count = 2;
+
+        if (this.args.length < 2) {
+            this.report_error("missing argument");
+            return;
+        }
+        if (this.args.length > 2) {
+            this.report_error("too many arguments");
+            return;
+        }
+
+        if (this.instr_eff == "mvi") {
+            if (lowercase_unquoted(this.args[0]) != 'a') {
+                this.report_error("first argument must be \"a\" for mvi");
+                return;
+            }
+        }
     }
 
     add_instruction(code) {

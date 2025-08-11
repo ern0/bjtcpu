@@ -9,6 +9,22 @@ self.addEventListener("message", function(event) {
 
 }, false);
 
+function low_nibble(value) {
+    return value & 0x0f;
+}
+
+function mid_nibble(value) {
+    return (value >> 4) & 0x0f;
+}
+
+function high_nibble(value) {
+    return (value >> 8) & 0x0f;
+}
+
+function super_nibble(value) {
+    return (value >> 12) & 0x0f;
+}
+
 function is_valid_symbol(symbol) {
 
     if (symbol.length == 0) return false;
@@ -122,21 +138,21 @@ class Compiler {
             return;
         }
 
-        // console.group("==== lines ====");
-        // console.log(this.lines);
-        // console.groupEnd();
+        console.group("==== lines ====");
+        console.log(this.lines);
+        console.groupEnd();
 
-        // console.group("==== symbols ====");
-        // console.log(this.symbols);
-        // console.groupEnd();
+        console.group("==== symbols ====");
+        console.log(this.symbols);
+        console.groupEnd();
 
-        // console.group("==== memory ====");
-        // console.log(this.memory);
-        // console.groupEnd();
+        console.group("==== memory ====");
+        console.log(this.memory);
+        console.groupEnd();
 
-        for (let ptr = 0; ptr < this.pc; ptr++) {
-            console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
-        }
+        // for (let ptr = 0; ptr < this.pc; ptr++) {
+        //     console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
+        // }
     }
 
     add_label(line) {
@@ -197,6 +213,7 @@ class Compiler {
             //
             ".nibble":  [null, 0,  1],
             ".byte":    [null, 0,  2],
+            ".display": [null, 0,  2],
             ".address": [null, 0,  3],
             ".word":    [null, 0,  4],
         };
@@ -210,7 +227,7 @@ class Compiler {
         this.compile_round_2();
         if (this.error != null) return;
 
-        console.log(this.lines);
+        this.dump();
     }
 
     compile_round_1() {
@@ -248,6 +265,14 @@ class Compiler {
         this.memory[this.pc + offset] = nibble;
     }
 
+    calculate_expression(expr, size) {
+
+        let result = [];
+        result.push(0);
+
+        return result;
+    }
+
 } // class Compiler
 
 class Line {
@@ -275,17 +300,17 @@ class Line {
         if (this.parts[0].substring(0, 1) == ";") return;
         if (this.parts[0] == "") return;
 
-        this.parse_label();
+        this.round1_parse_label();
         if (this.compiler.error != null) return;
 
-        this.parse_instr();
+        this.round1_parse_instr();
         if (this.compiler.error != null) return;
 
-        this.size = this.get_instr_size();
+        this.size = this.round1_get_instr_size();
         if (this.compiler.error != null) return;
     }
 
-    get_instr_size() {
+    round1_get_instr_size() {
 
         let symbol_to_validate = this.instr_eff;
         if (this.instr_eff[0] == ".") symbol_to_validate = this.instr_eff.substring(1,99);
@@ -304,7 +329,7 @@ class Line {
         return size;
     }
 
-    parse_label() {
+    round1_parse_label() {
 
         this.label = null;
         const len = this.parts[0].length;
@@ -338,7 +363,7 @@ class Line {
         }
     }
 
-    parse_instr() {
+    round1_parse_instr() {
 
         const instr_index = ( this.label == null ? 0 : 1 );
         if (this.parts.length <= instr_index) {
@@ -361,25 +386,118 @@ class Line {
     round2() {
 
         const instr_info = this.compiler.machine_instr_list[this.instr_eff];
+        if (typeof(instr_info) == "undefined") return;
         const opcode = instr_info[0];
-        const arg_size = instr_info[1];
+        const arg_size = instr_info[2];
 
-        if (opcode != null) {
-            this.round2_proc_instr(opcode, arg_size);
-            if (this.compiler.error != null) return;
+        if (opcode == null) {
+
+            if (this.instr_eff[0] == ".") {
+                if (arg_size > 0) {
+                    this.round2_proc_instr_pseudo_data(arg_size);
+                } else {
+                    // not such pseudo instructions yet
+                }
+            } else {
+                this.round2_proc_instr_macro();
+            }
+
         } else {
-            // pass
+            this.round2_proc_instr_real(opcode, arg_size);
         }
 
     }
 
-    round2_proc_instr(opcode, arg_size) {
+    round2_proc_instr_real(opcode, arg_size) {
 
         this.check_arg_count();
         if (this.compiler.error != null) return;
 
+        this.add_instruction(opcode);
+        if (this.compiler.error != null) return;
 
-        this.report_error("break");
+        if (this.instr_eff == "mvi") {
+            const value = this.compiler.calculate_expression(this.args[1], 1)[0];
+        if (this.compiler.error != null) return;
+            this.add_immediate(value);
+        } else {
+            const address = this.compiler.calculate_expression(this.args[0], 1)[0];
+            if (this.compiler.error != null) return;
+            this.add_address(address);
+        }
+    }
+
+    round2_proc_instr_macro() {
+
+        if (this.instr_eff == "call") this.round2_proc_instr_macro_call();
+        if (this.instr_eff == "ret") this.round2_proc_instr_macro_ret();
+        if (this.compiler.error != null) return;
+    }
+
+    get_opcode_by_name(name) {
+
+        return this.compiler.machine_instr_list[name][0];
+    }
+
+    round2_proc_instr_macro_call() {
+
+        const PLACEHOLDER = 0;
+        const target_address = 0;
+        const return_address = this.pc + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
+
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(low_nibble(return_address));           // 1
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                                   // 3
+
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(mid_nibble(return_address));           // 1
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                                   // 3
+
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(high_nibble(return_address));          // 1
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                                   // 3
+
+        this.add_instruction(this.get_opcode_by_name("jmp"));  // 1
+        this.add_address(target_address);                      // 3
+    }
+
+    round2_proc_instr_macro_ret() {
+
+        const PLACEHOLDER = 0;
+
+        this.add_instruction(this.get_opcode_by_name("jmp"));
+        this.add_address(PLACEHOLDER);
+    }
+
+    round2_proc_instr_pseudo_data(arg_size) {
+
+        let offset = 0;
+        for (const arg in this.args) {
+
+            const value_list = this.compiler.calculate_expression(arg, arg_size);
+            if (value_list == null) {
+                this.report_error("invalid expression: " + arg);
+                return;
+            }
+
+            for (const value in value_list) {
+
+                let shift = 0;
+                for (let digit_pos = 0; digit_pos < arg_size; digit_pos++) {
+
+                    const digit_value = (value >> shift) & 0x0f;
+                    shift += 4;
+                    const nibble = new Nibble(this.compiler, digit_value, this);
+                    this.compiler.set_mem_relative(offset + digit_pos, nibble);
+
+                } // for digit
+
+                offset += arg_size;
+            } // for value
+        } // for arg
 
     }
 
@@ -388,47 +506,45 @@ class Line {
         let req_arg_count = 1;
         if (this.instr_eff == "mvi") req_arg_count = 2;
 
-        if (this.args.length < 2) {
+        if (this.args.length < req_arg_count) {
             this.report_error("missing argument");
             return;
         }
-        if (this.args.length > 2) {
+        if (this.args.length > req_arg_count) {
             this.report_error("too many arguments");
             return;
         }
 
         if (this.instr_eff == "mvi") {
             if (lowercase_unquoted(this.args[0]) != 'a') {
-                this.report_error("first argument must be \"a\" for mvi");
+                this.report_error("first argument must be \"A\" for MVI");
                 return;
             }
         }
     }
 
-    add_instruction(code) {
-        let nibble = new Nibble(this.compiler, code, this);
+    add_instruction(opcode) {
+
+        let nibble = new Nibble(this.compiler, opcode, this);
         this.compiler.set_mem_relative(0, nibble);
+    }
+
+    add_immediate(value) {
+
+        const nibble = new Nibble(this.compiler, value, this);
+        this.compiler.set_mem_relative(1, nibble);
     }
 
     add_address(address) {
 
-        const value1 = (address >> 0) & 0x0f;
-        const nibble1 = new Nibble(this.compiler, value1, this);
-        this.compiler.set_mem_relative(1, nibble1);
+        const low = new Nibble(this.compiler, low_nibble(address), this);
+        this.compiler.set_mem_relative(1, low);
 
-        const value2 = (address >> 4) & 0x0f;
-        const nibble2 = new Nibble(this.compiler, value2, this);
-        this.compiler.set_mem_relative(2, nibble2);
+        const mid = new Nibble(this.compiler, mid_nibble(address), this);
+        this.compiler.set_mem_relative(2, mid);
 
-        const value3 = (address >> 8) & 0x0f;
-        const nibble3 = new Nibble(this.compiler, value3, this);
-        this.compiler.set_mem_relative(3, nibble3);
-    }
-
-    add_operand(op) {
-
-        const nibble = new Nibble(this.compiler, op, this);
-        this.compiler.set_mem_relative(1, nibble);
+        const high = new Nibble(this.compiler, high_nibble(address), this);
+        this.compiler.set_mem_relative(3, high);
     }
 
 } // class Line

@@ -71,9 +71,7 @@ function split_by(line, by) {
         current += char;
     }
 
-    if (current.trim().length > 0) {
-        result.push(current.trim());
-    }
+    result.push(current.trim());
 
     return result;
 }
@@ -275,6 +273,7 @@ class Line {
         this.parts = split_by(this.original, " ");
         if (this.parts.length == 0) return;
         if (this.parts[0].substring(0, 1) == ";") return;
+        if (this.parts[0] == "") return;
 
         this.parse_label();
         if (this.compiler.error != null) return;

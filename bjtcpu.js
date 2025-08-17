@@ -30,7 +30,6 @@ function setup_editor() {
     });
 
     app.editor.on("change", function(cm, change) {
-        console.log("EDITOR CHANGE")
         editor_changed();
     });
 }

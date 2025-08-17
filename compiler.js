@@ -32,62 +32,42 @@ function is_valid_symbol(symbol) {
     return /^[a-zA-Z0-9_]+$/.test(symbol);
 }
 
-function split_by(line, by) {
+function split_by(line, split) {
 
     const result = [];
-    let current = '';
-    let inside_single = false;
-    let inside_double = false;
+    let current = "";
+    let in_quote = null;
+    let i = 0;
 
-    for (let i = 0; i < line.length; i++) {
+    while (i < line.length) {
         const char = line[i];
 
-        if (char == "'" && !inside_double) {
-            if (inside_single) {
+        if ((char == '"') || (char == "'")) {
+            if (in_quote == null) {
+                in_quote = char;
                 current += char;
-                result.push(current.trim());
-                current = "";
-                inside_single = false;
+            } else if (in_quote == char) {
+                in_quote = null;
+                current += char;
             } else {
-                if (current.trim().length > 0) {
-                    result.push(current.trim());
-                    current = "";
-                }
                 current += char;
-                inside_single = true;
             }
+            i++;
             continue;
         }
 
-        if (char == '"' && !inside_single) {
-            if (inside_double) {
-                current += char;
-                result.push(current.trim());
-                current = "";
-                inside_double = false;
-            } else {
-                if (current.trim().length > 0) {
-                    result.push(current.trim());
-                    current = "";
-                }
-                current += char;
-                inside_double = true;
-            }
-            continue;
-        }
-
-        if (char == by && !inside_single && !inside_double) {
-            if (current.trim().length > 0) {
-                result.push(current.trim());
-                current = "";
-            }
+        if ((char == split) && (in_quote == null)) {
+            result.push(current);
+            current = "";
+            i++;
             continue;
         }
 
         current += char;
+        i++;
     }
 
-    result.push(current.trim());
+    result.push(current);
 
     return result;
 }
@@ -98,8 +78,7 @@ function lowercase_unquoted(str) {
   let in_double_quote = false;
   let result = '';
 
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
+  for (const char of str) {
 
     if (char == "'" && !in_double_quote) {
       in_single_quote = !in_single_quote;
@@ -267,11 +246,65 @@ class Compiler {
         this.memory[this.pc + offset] = nibble;
     }
 
-    calculate_expression(expr, size) {
+    calculate_expression(line, expr, size) {
 
-        console.log(expr)
+        expr = expr.trim();
+        let result;
+        let mode;
+
+        if ((expr[0] == '"')  || (expr[0] == "'")) {
+            mode = "string";
+            result = this.calculate_expression_string(line, expr, size);
+        } else {
+            mode = "number";
+            result = this.calculate_expression_number(line, expr, size);
+        }
+
+        return result;
+    }
+
+    calculate_expression_number(line, expr, size) {
+
+        if (expr == "") {
+            this.report_error("invalid expression", line);
+            return;
+        }
+
+        // TODO
+
+        return [12];
+    }
+
+    calculate_expression_string(line, expr, size) {
+
+        if (size != 2) {
+            this.report_error("string must be 8-bit", line);
+            return;
+        }
+
+        if (expr[0] != expr[expr.length - 1]) {
+            this.report_error("invalid string", line);
+            return;
+        }
+
+        expr = expr.slice(1, -1);
         let result = [];
-        result.push(0);
+
+        for (const char of expr) {
+            const ascii = char.charCodeAt(0);
+            result.push(ascii);
+        }
+
+        if (line.instr_eff == ".display") {
+            result = this.convert_to_display_codes(result);
+        }
+
+        return result;
+    }
+
+    convert_to_display_codes(result) {
+
+        // TODO
 
         return result;
     }
@@ -420,11 +453,11 @@ class Line {
         if (this.compiler.error != null) return;
 
         if (this.instr_eff == "mvi") {
-            const value = this.compiler.calculate_expression(this.args[1], 1)[0];
-        if (this.compiler.error != null) return;
+            const value = this.compiler.calculate_expression(this, this.args[1], 1)[0];
+            if (this.compiler.error != null) return;
             this.add_immediate(value);
         } else {
-            const address = this.compiler.calculate_expression(this.args[0], 1)[0];
+            const address = this.compiler.calculate_expression(this, this.args[0], 1)[0];
             if (this.compiler.error != null) return;
             this.add_address(address);
         }
@@ -478,16 +511,13 @@ class Line {
     round2_proc_instr_pseudo_data(arg_size) {
 
         let offset = 0;
-        for (const arg_index in this.args) {
-            const arg_value = this.args[arg_index];
+        for (const arg_value of this.args) {
 
-            const value_list = this.compiler.calculate_expression(arg_value, arg_size);
-            if (value_list == null) {
-                this.report_error("invalid expression: " + arg_value);
-                return;
-            }
+            const value_list = this.compiler.calculate_expression(this, arg_value, arg_size);
+            if (this.compiler.error != null) return;
 
-            for (const value in value_list) {
+            for (const value_index in value_list) {
+                const value = value_list[value_index];
 
                 let shift = 0;
                 for (let digit_pos = 0; digit_pos < arg_size; digit_pos++) {

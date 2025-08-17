@@ -1,6 +1,5 @@
 self.addEventListener("message", function(event) {
 
-    console.log("--------------------------------------")
     let compiler = new Compiler(event.data)
     compiler.compile();
 
@@ -300,45 +299,69 @@ class Compiler {
 
     calculate_expression_numeric(line, expr, size) {
 
+        const error_message = "invalid expression";
         expr = expr.replace(/\s+/g, "");
-
-        if (!/^[-+]?(\d+([-+]\d+)*)?$/.test(expr)) {
-            this.report_error("invalid character in expression", line);
-            return;
-        }
-
         const tokens = expr.split(/([+-])/).filter(token => token != "");
 
-        if (tokens[0] == '+' || tokens[0] == '-') {
+        if (tokens[0] == "+" || tokens[0] == "-") {
             tokens.unshift("0");
         }
-        // TODO: check for symbol
-        let result = parseInt(tokens[0], 10);
+        let result = this.parse_value(tokens[0], line);
+        if (this.error != null) return;
+        if (isNaN(result)) {
+            this.report_error(error_message, line);
+            return;
+        }
 
         for (let i = 1; i < tokens.length; i += 2) {
 
             const operator = tokens[i];
-            // TODO: check for symbol
-            const next_value = parseInt(tokens[i + 1], 10);
+            const next_value = this.parse_value(tokens[i + 1])
+            if (this.error != null) return;
 
             if (isNaN(next_value)) {
-                this.report_error("invalid number in expression", line);
+                this.report_error(error_message, line);
                 return;
             }
 
-            if (operator === '+') {
+            if (operator == "+") {
                 result += next_value;
-            } else if (operator === '-') {
+            } else if (operator == "-") {
                 result -= next_value;
             } else {
-                this.report_error("invalid operator in expression", line);
+                this.report_error(error_message, line);
                 return;
             }
 
         }
 
-        console.log("R:", result)
         return [result];
+    }
+
+    parse_value(token, line) {
+
+        if (is_valid_symbol(token)) {
+            return this.parse_symbol(token, line);
+        } else {
+            return this.parse_number(token, line);
+        }
+
+    }
+
+    parse_symbol(token, line) {
+
+        // TODO
+
+        return 99;
+    }
+
+    parse_number(token, line) {
+
+        let value = parseInt(token, 10);
+        if (isNaN(value)) return NaN;
+        if (token != value) return NaN;
+
+        return value;
     }
 
 } // class Compiler

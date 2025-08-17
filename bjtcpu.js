@@ -30,6 +30,7 @@ function setup_editor() {
     });
 
     app.editor.on("change", function(cm, change) {
+        console.log("EDITOR CHANGE")
         editor_changed();
     });
 }
@@ -64,7 +65,7 @@ function editor_changed() {
 function setup_keys() {
 
     document.addEventListener("keydown", function(event) {
-        let is_ctrl = event.metaKey || event.ctrlKey;
+        const is_ctrl = event.metaKey || event.ctrlKey;
 
         if (is_ctrl && event.key == 'e') {
             execute("full");
@@ -150,7 +151,7 @@ function compile_background_launch() {
         compile_background_finished(event.data);
     }
 
-    packet = {};
+    let packet = {};
     packet["source"] = app.editor.getValue();
     app.worker.postMessage(packet);
 }

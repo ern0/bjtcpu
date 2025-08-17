@@ -133,6 +133,8 @@ class Compiler {
 
     dump() {
 
+        return; /////////////////////////////////////////////////////
+
         if (this.error != null) {
             console.log("dump:", this.error)
             return;
@@ -267,6 +269,7 @@ class Compiler {
 
     calculate_expression(expr, size) {
 
+        console.log(expr)
         let result = [];
         result.push(0);
 
@@ -446,19 +449,19 @@ class Line {
         const return_address = this.pc + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
 
         this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
-        this.add_immediate(low_nibble(return_address));           // 1
+        this.add_immediate(low_nibble(return_address));        // 1
         this.add_instruction(this.get_opcode_by_name("sta"));  // 1
-        this.add_address(PLACEHOLDER);                                   // 3
+        this.add_address(PLACEHOLDER);                         // 3
 
         this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
-        this.add_immediate(mid_nibble(return_address));           // 1
+        this.add_immediate(mid_nibble(return_address));        // 1
         this.add_instruction(this.get_opcode_by_name("sta"));  // 1
-        this.add_address(PLACEHOLDER);                                   // 3
+        this.add_address(PLACEHOLDER);                         // 3
 
         this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
-        this.add_immediate(high_nibble(return_address));          // 1
+        this.add_immediate(high_nibble(return_address));       // 1
         this.add_instruction(this.get_opcode_by_name("sta"));  // 1
-        this.add_address(PLACEHOLDER);                                   // 3
+        this.add_address(PLACEHOLDER);                         // 3
 
         this.add_instruction(this.get_opcode_by_name("jmp"));  // 1
         this.add_address(target_address);                      // 3
@@ -475,11 +478,12 @@ class Line {
     round2_proc_instr_pseudo_data(arg_size) {
 
         let offset = 0;
-        for (const arg in this.args) {
+        for (const arg_index in this.args) {
+            const arg_value = this.args[arg_index];
 
-            const value_list = this.compiler.calculate_expression(arg, arg_size);
+            const value_list = this.compiler.calculate_expression(arg_value, arg_size);
             if (value_list == null) {
-                this.report_error("invalid expression: " + arg);
+                this.report_error("invalid expression: " + arg_value);
                 return;
             }
 

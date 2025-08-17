@@ -1,5 +1,6 @@
 self.addEventListener("message", function(event) {
 
+    console.log("--------------------------------------")
     let compiler = new Compiler(event.data)
     compiler.compile();
 
@@ -249,64 +250,95 @@ class Compiler {
     calculate_expression(line, expr, size) {
 
         expr = expr.trim();
-        let result;
-        let mode;
-
-        if ((expr[0] == '"')  || (expr[0] == "'")) {
-            mode = "string";
-            result = this.calculate_expression_string(line, expr, size);
-        } else {
-            mode = "number";
-            result = this.calculate_expression_number(line, expr, size);
-        }
-
-        return result;
-    }
-
-    calculate_expression_number(line, expr, size) {
 
         if (expr == "") {
             this.report_error("invalid expression", line);
             return;
         }
 
-        // TODO
-
-        return [12];
+        if ((expr[0] == '"') || (expr[0] == "'")) {
+            return this.calculate_expression_string(line, expr, size);
+        } else {
+            return this.calculate_expression_numeric(line, expr, size);
+        }
     }
 
-    calculate_expression_string(line, expr, size) {
+    calculate_expression_string(line, string_literal, size) {
 
         if (size != 2) {
             this.report_error("string must be 8-bit", line);
             return;
         }
 
-        if (expr[0] != expr[expr.length - 1]) {
+        if (string_literal[0] != string_literal[string_literal.length - 1]) {
             this.report_error("invalid string", line);
             return;
         }
 
-        expr = expr.slice(1, -1);
+        string_literal = string_literal.slice(1, -1);
         let result = [];
 
-        for (const char of expr) {
+        for (const char of string_literal) {
             const ascii = char.charCodeAt(0);
             result.push(ascii);
         }
 
         if (line.instr_eff == ".display") {
-            result = this.convert_to_display_codes(result);
+            result = this.ascii_to_display(result);
         }
 
         return result;
     }
 
-    convert_to_display_codes(result) {
+    ascii_to_display(result) {
 
         // TODO
 
         return result;
+    }
+
+
+    calculate_expression_numeric(line, expr, size) {
+
+        expr = expr.replace(/\s+/g, "");
+
+        if (!/^[-+]?(\d+([-+]\d+)*)?$/.test(expr)) {
+            this.report_error("invalid character in expression", line);
+            return;
+        }
+
+        const tokens = expr.split(/([+-])/).filter(token => token != "");
+
+        if (tokens[0] == '+' || tokens[0] == '-') {
+            tokens.unshift("0");
+        }
+        // TODO: check for symbol
+        let result = parseInt(tokens[0], 10);
+
+        for (let i = 1; i < tokens.length; i += 2) {
+
+            const operator = tokens[i];
+            // TODO: check for symbol
+            const next_value = parseInt(tokens[i + 1], 10);
+
+            if (isNaN(next_value)) {
+                this.report_error("invalid number in expression", line);
+                return;
+            }
+
+            if (operator === '+') {
+                result += next_value;
+            } else if (operator === '-') {
+                result -= next_value;
+            } else {
+                this.report_error("invalid operator in expression", line);
+                return;
+            }
+
+        }
+
+        console.log("R:", result)
+        return [result];
     }
 
 } // class Compiler

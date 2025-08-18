@@ -112,28 +112,26 @@ class Compiler {
 
     dump() {
 
-        return; /////////////////////////////////////////////////////
-
         if (this.error != null) {
             console.log("dump:", this.error)
             return;
         }
 
-        console.group("==== lines ====");
-        console.log(this.lines);
-        console.groupEnd();
+        // console.group("==== lines ====");
+        // console.log(this.lines);
+        // console.groupEnd();
 
-        console.group("==== symbols ====");
-        console.log(this.symbols);
-        console.groupEnd();
+        // console.group("==== symbols ====");
+        // console.log(this.symbols);
+        // console.groupEnd();
 
-        console.group("==== memory ====");
-        console.log(this.memory);
-        console.groupEnd();
+        // console.group("==== memory ====");
+        // console.log(this.memory);
+        // console.groupEnd();
 
-        // for (let ptr = 0; ptr < this.pc; ptr++) {
-        //     console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
-        // }
+        for (let ptr = 0; ptr < this.pc; ptr++) {
+            console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
+        }
     }
 
     add_label(line) {
@@ -306,7 +304,7 @@ class Compiler {
         if (tokens[0] == "+" || tokens[0] == "-") {
             tokens.unshift("0");
         }
-        let result = this.parse_value(tokens[0], line);
+        let result = this.parse_value(line, tokens[0]);
         if (this.error != null) return;
         if (isNaN(result)) {
             this.report_error(error_message, line);
@@ -315,8 +313,12 @@ class Compiler {
 
         for (let i = 1; i < tokens.length; i += 2) {
 
+            if (tokens.length <= (i + 1)) {
+                this.report_error(error_message, line);
+                return;
+            }
             const operator = tokens[i];
-            const next_value = this.parse_value(tokens[i + 1])
+            const next_value = this.parse_value(line, tokens[i + 1])
             if (this.error != null) return;
 
             if (isNaN(next_value)) {
@@ -335,31 +337,68 @@ class Compiler {
 
         }
 
+        this.check_limit(line, result, size);
         return [result];
     }
 
-    parse_value(token, line) {
+    check_limit(line, value, size) {
 
-        if (is_valid_symbol(token)) {
-            return this.parse_symbol(token, line);
-        } else {
-            return this.parse_number(token, line);
+        const bit_count = size * 4;
+        const upper_limit_excl = 2 ** bit_count;
+        const lower_limit_incl = -(2 ** (bit_count - 1));
+
+        if ((value < lower_limit_incl) || (value >= upper_limit_excl)) {
+            this.report_error("value out of range", line);
         }
-
     }
 
-    parse_symbol(token, line) {
+    parse_value(line, token) {
 
-        // TODO
+        let value;
+
+        if (is_valid_symbol(token)) {
+            value = this.parse_symbol(line, token);
+        } else {
+            value = this.parse_number(token);
+        }
+
+        return value;
+    }
+
+    parse_symbol(line, token) {
+
+        // TODO: symbol, PC
 
         return 99;
     }
 
-    parse_number(token, line) {
+    parse_number(token) {
 
-        let value = parseInt(token, 10);
+        if (token == "0") return 0;
+
+        let radix = 10;
+        if (token.startsWith("$")) {
+            token = token.substring(1);
+            radix = 16;
+        }
+        if (token.startsWith("0")) {
+            if (token.toLowerCase().startsWith("0x")) {
+                token = token.substring(2);
+                radix = 16;
+            } else {
+                token = token.substring(1);
+                radix = 8;
+            }
+        }
+        if (token.startsWith("%")) {
+            token = token.substring(1);
+            radix = 2;
+        }
+
+        let value = parseInt(token, radix);
+
         if (isNaN(value)) return NaN;
-        if (token != value) return NaN;
+        if ((radix == 10) && (token != value)) return NaN;
 
         return value;
     }

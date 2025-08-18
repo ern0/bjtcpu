@@ -197,7 +197,7 @@ class Compiler {
             "jp":       [0xF,  4,  0],
             //
             "nop":      [null, 0,  0],
-            "call":     [null, ((3 * 2) + (3 * 4) + (1 * 4)),  0],  // 3x mvi, 3x sta, 1x jmp
+            "call":     [null, ((3 * 2) + (3 * 4) + (1 * 4)),  0],  // 3x mvi, 3x sta, 1x jmp => 22
             "ret":      [null, 4, 0],
             //
             ".nibble":  [null, 0,  1],
@@ -447,6 +447,28 @@ class Compiler {
         return value;
     }
 
+    get_valid_target_address(line, instr_type) {
+
+        const target_expr = line.args[0];
+        if (typeof(target_expr) == "undefined") {
+            this.report_error("missing " + instr_type + " target", line);
+            return;
+        }
+
+        const target_lc = target_expr.toLowerCase();
+        const address = this.symbols[target_lc];
+        if (typeof(address) == "undefined") {
+            if (is_valid_symbol(target_lc)) {
+                this.report_error("undefined " + instr_type + " target label: " + target_expr, line);
+            } else {
+                this.report_error("invalid " + instr_type + " target expression: " + target_expr, line);
+            }
+            return;
+        }
+
+        return address;
+    }
+
 } // class Compiler
 
 class Line {
@@ -586,19 +608,26 @@ class Line {
 
     round2_proc_instr_real(opcode, arg_size) {
 
-        this.check_arg_count();
-        if (this.compiler.error != null) return;
+        if (this.instr_eff != "jmp") {
+            this.check_arg_count();
+            if (this.compiler.error != null) return;
+        }
 
         this.add_instruction(opcode);
         if (this.compiler.error != null) return;
 
         if (this.instr_eff == "mvi") {
-            const result = this.compiler.calculate_expression(this, this.args[1], 1, true);
+            const result = this.compiler.calculate_expression(this, this.args[1], arg_size, true);
             if (this.compiler.error != null) return;
             const value = result[0];
             this.add_immediate(value);
         } else {
-            const result = this.compiler.calculate_expression(this, this.args[0], 3, false);
+            let result;
+            if (this.instr_eff == "jmp") {
+                result = this.compiler.get_valid_target_address(this, "jmp");
+            } else {
+                result = this.compiler.calculate_expression(this, this.args[0], arg_size, false);
+            }
             if (this.compiler.error != null) return;
             const address = result[0];
             this.add_address(address);
@@ -619,35 +648,35 @@ class Line {
 
     round2_proc_instr_macro_call() {
 
-        const PLACEHOLDER = 0;
-        const target_address = 0;
+        const target_address = this.compiler.get_valid_target_address(this, "call");
+        const PLACEHOLDER = 0
         const return_address = this.pc + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
-        let offset = 0;
 
+        let offset = 0;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
         this.add_immediate(low_nibble(return_address), offset);  // 1
-        offset += 2;
 
+        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
         this.add_address(PLACEHOLDER, offset);                   // 3
-        offset += 4;
 
+        offset += 4;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
         this.add_immediate(mid_nibble(return_address), offset);  // 1
-        offset += 2;
 
+        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
         this.add_address(PLACEHOLDER, offset);                   // 3
-        offset += 4;
 
+        offset += 4;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
         this.add_immediate(high_nibble(return_address), offset); // 1
-        offset += 2;
 
+        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
         this.add_address(PLACEHOLDER, offset);                   // 3
-        offset += 4;
 
+        offset += 4;
         this.add_instruction(this.get_opcode_by_name("jmp"));    // 1
         this.add_address(target_address, offset);                // 3
     }

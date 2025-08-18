@@ -244,7 +244,7 @@ class Compiler {
         this.memory[this.pc + offset] = nibble;
     }
 
-    calculate_expression(line, expr, size) {
+    calculate_expression(line, expr, size, negative_allowed) {
 
         expr = expr.trim();
 
@@ -256,7 +256,7 @@ class Compiler {
         if ((expr[0] == '"') || (expr[0] == "'")) {
             return this.calculate_expression_string(line, expr, size);
         } else {
-            return this.calculate_expression_numeric(line, expr, size);
+            return this.calculate_expression_numeric(line, expr, size, negative_allowed);
         }
     }
 
@@ -295,7 +295,7 @@ class Compiler {
     }
 
 
-    calculate_expression_numeric(line, expr, size) {
+    calculate_expression_numeric(line, expr, size, negative_allowed) {
 
         const error_message = "invalid expression";
         expr = expr.replace(/\s+/g, "");
@@ -310,7 +310,6 @@ class Compiler {
             this.report_error(error_message, line);
             return;
         }
-
         for (let i = 1; i < tokens.length; i += 2) {
 
             if (tokens.length <= (i + 1)) {
@@ -337,15 +336,18 @@ class Compiler {
 
         }
 
-        this.check_limit(line, result, size);
+        this.check_limit(line, result, size, negative_allowed);
         return [result];
     }
 
-    check_limit(line, value, size) {
+    check_limit(line, value, size, negative_allowed) {
 
         const bit_count = size * 4;
         const upper_limit_excl = 2 ** bit_count;
-        const lower_limit_incl = -(2 ** (bit_count - 1));
+        let lower_limit_incl = 0;
+        if (negative_allowed) {
+            lower_limit_incl = -(2 ** (bit_count - 1));
+        }
 
         if ((value < lower_limit_incl) || (value >= upper_limit_excl)) {
             this.report_error("value out of range", line);
@@ -425,7 +427,7 @@ class Line {
         this.original = text;
         this.size = 0;
 
-        this.parts = split_by(this.original, " ");
+        this.parts = split_by(this.original.trim(), " ");
         if (this.parts.length == 0) return;
         if (this.parts[0].substring(0, 1) == ";") return;
         if (this.parts[0] == "") return;
@@ -511,6 +513,9 @@ class Line {
 
         const str = this.parts.join(" ");
         this.args = split_by(str, ",");
+        if (this.args[0] == "") {
+            this.args = [];
+        }
     }
 
     round2() {
@@ -547,12 +552,14 @@ class Line {
         if (this.compiler.error != null) return;
 
         if (this.instr_eff == "mvi") {
-            const value = this.compiler.calculate_expression(this, this.args[1], 1)[0];
+            const result = this.compiler.calculate_expression(this, this.args[1], 1, true);
             if (this.compiler.error != null) return;
+            const value = result[0];
             this.add_immediate(value);
         } else {
-            const address = this.compiler.calculate_expression(this, this.args[0], 1)[0];
+            const result = this.compiler.calculate_expression(this, this.args[0], 3, false);
             if (this.compiler.error != null) return;
+            const address = result[0];
             this.add_address(address);
         }
     }
@@ -607,7 +614,7 @@ class Line {
         let offset = 0;
         for (const arg_value of this.args) {
 
-            const value_list = this.compiler.calculate_expression(this, arg_value, arg_size);
+            const value_list = this.compiler.calculate_expression(this, arg_value, arg_size, true);
             if (this.compiler.error != null) return;
 
             for (const value_index in value_list) {

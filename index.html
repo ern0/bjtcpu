@@ -20,13 +20,9 @@
         <div id="editor-container">
 <textarea id="editor">
 start:
-    ;call sub
-    jmp start
+    call sub
 sub:
-    mvi a,1
-    mvi a,2
-    ;ret
-    .log @end
+    .log sub, @end
 </textarea>
             <div id="indicator"></div>
         </div>

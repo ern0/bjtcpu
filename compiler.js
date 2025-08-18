@@ -456,8 +456,8 @@ class Compiler {
         }
 
         const target_lc = target_expr.toLowerCase();
-        const address = this.symbols[target_lc];
-        if (typeof(address) == "undefined") {
+        const symbol = this.symbols[target_lc];
+        if (typeof(symbol) == "undefined") {
             if (is_valid_symbol(target_lc)) {
                 this.report_error("undefined " + instr_type + " target label: " + target_expr, line);
             } else {
@@ -466,7 +466,7 @@ class Compiler {
             return;
         }
 
-        return address;
+        return symbol.value;
     }
 
 } // class Compiler
@@ -621,13 +621,12 @@ class Line {
             if (this.compiler.error != null) return;
             const value = result[0];
             this.add_immediate(value);
+        } else if (this.instr_eff == "jmp") {
+            const address = this.compiler.get_valid_target_address(this, "jmp");
+            if (this.compiler.error != null) return;
+            this.add_address(address);
         } else {
-            let result;
-            if (this.instr_eff == "jmp") {
-                result = this.compiler.get_valid_target_address(this, "jmp");
-            } else {
-                result = this.compiler.calculate_expression(this, this.args[0], arg_size, false);
-            }
+            result = this.compiler.calculate_expression(this, this.args[0], arg_size, false);
             if (this.compiler.error != null) return;
             const address = result[0];
             this.add_address(address);

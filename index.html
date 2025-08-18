@@ -19,8 +19,14 @@
     <div id="middle">
         <div id="editor-container">
 <textarea id="editor">
-    mvi a,5
-    sta $777
+start:
+    ;call sub
+    jmp start
+sub:
+    mvi a,1
+    mvi a,2
+    ;ret
+    .log @end
 </textarea>
             <div id="indicator"></div>
         </div>

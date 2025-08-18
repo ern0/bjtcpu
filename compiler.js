@@ -1,5 +1,6 @@
 self.addEventListener("message", function(event) {
 
+console.log("----------------------------------")
     let compiler = new Compiler(event.data)
     compiler.compile();
 
@@ -28,6 +29,7 @@ function super_nibble(value) {
 function is_valid_symbol(symbol) {
 
     if (symbol.length == 0) return false;
+    if (symbol[0] == "@") symbol = symbol.substring(1);
     if (/^\d/.test(symbol)) return false;
     return /^[a-zA-Z0-9_]+$/.test(symbol);
 }
@@ -96,6 +98,14 @@ function lowercase_unquoted(str) {
   return result;
 }
 
+function is_string_expr(expr) {
+
+    if (expr[0] == '"') return true;
+    if (expr[0] == "'") return true;
+
+    return false;
+}
+
 class Compiler {
 
     constructor(data) {
@@ -153,7 +163,7 @@ class Compiler {
             );
         }
 
-        this.symbols[eff_name] = new Symbol(type, orig_name, size, value);
+        this.symbols[eff_name] = new Symbol(type, orig_name, value);
     }
 
     report_error(message, line) {
@@ -195,6 +205,7 @@ class Compiler {
             ".display": [null, 0,  2],
             ".address": [null, 0,  3],
             ".word":    [null, 0,  4],
+            ".log":     [null, 0,  0],
         };
     }
 
@@ -229,6 +240,7 @@ class Compiler {
     compile_round_2() {
 
         this.pc = 0;
+        this.last_offset = 0;
 
         for (let lineno in this.lines) {
 
@@ -242,6 +254,7 @@ class Compiler {
 
     set_mem_relative(offset, nibble) {
         this.memory[this.pc + offset] = nibble;
+        this.last_offset = offset;
     }
 
     calculate_expression(line, expr, size, negative_allowed) {
@@ -253,7 +266,7 @@ class Compiler {
             return;
         }
 
-        if ((expr[0] == '"') || (expr[0] == "'")) {
+        if (is_string_expr(expr)) {
             return this.calculate_expression_string(line, expr, size);
         } else {
             return this.calculate_expression_numeric(line, expr, size, negative_allowed);
@@ -262,7 +275,7 @@ class Compiler {
 
     calculate_expression_string(line, string_literal, size) {
 
-        if (size != 2) {
+        if ((size != 2) && (size != 0)) {
             this.report_error("string must be 8-bit", line);
             return;
         }
@@ -342,6 +355,8 @@ class Compiler {
 
     check_limit(line, value, size, negative_allowed) {
 
+        if (size == 0) return;
+
         const bit_count = size * 4;
         const upper_limit_excl = 2 ** bit_count;
         let lower_limit_incl = 0;
@@ -369,9 +384,36 @@ class Compiler {
 
     parse_symbol(line, token) {
 
-        // TODO: symbol, PC
+        if (token[0] == "@") {
+            return this.get_sysvar_value(line, token);
+        } else {
+            return this.get_symbol_value(line, token);
+        }
 
-        return 99;
+    }
+
+    get_sysvar_value(line, token) {
+
+        const token_lc = token.toLowerCase();
+
+        if (token_lc == "@line") return this.pc;
+        if (token_lc == "@pc") return this.pc + this.last_offset + 1;
+        if (token_lc == "@end") return this.memory.length;
+
+        this.report_error("undefined system variable: " + token, line);
+    }
+
+    get_symbol_value(line, token) {
+
+        const token_lc = token.toLowerCase();
+
+        const symbol = this.symbols[token_lc];
+        if (typeof(symbol) == "undefined") {
+            this.report_error("undefined symbol: " + token, line);
+            return;
+        }
+
+        return symbol.value;
     }
 
     parse_number(token) {
@@ -445,7 +487,7 @@ class Line {
     round1_get_instr_size() {
 
         let symbol_to_validate = this.instr_eff;
-        if (this.instr_eff[0] == ".") symbol_to_validate = this.instr_eff.substring(1,99);
+        if (this.instr_eff[0] == ".") symbol_to_validate = this.instr_eff.substring(1);
         if (!is_valid_symbol(symbol_to_validate)) {
             this.report_error("malformed instruction");
             return -1;
@@ -500,7 +542,7 @@ class Line {
         const instr_index = ( this.label == null ? 0 : 1 );
         if (this.parts.length <= instr_index) {
             this.instr_orig = null;
-            this.instr_eff = ".nop";
+            this.instr_eff = "nop";
             this.args = [];
             return;
         }
@@ -526,12 +568,11 @@ class Line {
         const arg_size = instr_info[2];
 
         if (opcode == null) {
-
             if (this.instr_eff[0] == ".") {
                 if (arg_size > 0) {
                     this.round2_proc_instr_pseudo_data(arg_size);
                 } else {
-                    // not such pseudo instructions yet
+                    this.round2_proc_instr_pseudo_log();
                 }
             } else {
                 this.round2_proc_instr_macro();
@@ -636,6 +677,39 @@ class Line {
 
     }
 
+    round2_proc_instr_pseudo_log() {
+
+        let result = "";
+        let separator = ",";
+
+        for (let arg_value of this.args) {
+            arg_value = arg_value.trim();
+
+            if (is_string_expr(arg_value)) {
+                result += arg_value.slice(1, -1);
+                separator = ": ";
+                continue;
+            }
+
+            const value_list = this.compiler.calculate_expression(this, arg_value, 0, true);
+            if (this.compiler.error != null) return;
+
+            if (result != "") result += separator;
+            separator = ", ";
+
+            let vals = "";
+            for (let value of value_list) {
+                vals += ("" + value).trim();
+            }
+            if (vals != arg_value) {
+                result += arg_value + " = ";
+            }
+            result += vals;
+        }
+
+        console.warn("LOG[" + this.lineno + "]:", result);
+    }
+
     check_arg_count() {
 
         let req_arg_count = 1;
@@ -686,10 +760,9 @@ class Line {
 
 class Symbol {
 
-    constructor(type, name, size, value) {
+    constructor(type, name, value) {
         this.type = type;
         this.name = name;
-        this.size = size;
         this.value = value;
     }
 }

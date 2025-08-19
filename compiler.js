@@ -626,7 +626,7 @@ class Line {
             if (this.compiler.error != null) return;
             this.add_address(address);
         } else {
-            result = this.compiler.calculate_expression(this, this.args[0], arg_size, false);
+            const result = this.compiler.calculate_expression(this, this.args[0], arg_size, false);
             if (this.compiler.error != null) return;
             const address = result[0];
             this.add_address(address);

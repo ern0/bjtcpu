@@ -6,6 +6,7 @@ function startup() {
     init_vars();
     setup_editor();
     setup_keys();
+    setup_binary();
 
     compile_background_launch();
 }
@@ -22,8 +23,6 @@ function setup_editor() {
         extraKeys: {
             "Ctrl-E": function(_cm) { execute("full"); },
             "Cmd-E": function(_cm) { execute("full"); },
-            "Ctrl-A": function(_cm) { execute("anim"); },
-            "Cmd-A": function(_cm) { execute("anim"); },
             "Ctrl-T": function(_cm) { execute("debug"); },
             "Cmd-T": function(_cm) { execute("debug"); },
         }
@@ -55,6 +54,7 @@ function editor_changed() {
     }
 
     indicator("edit", null);
+    binary_hide();
 
     app.editor_change_timeout = setTimeout(function() {
         compile_background_launch();
@@ -79,6 +79,32 @@ function setup_keys() {
             event.preventDefault();
         }
     })
+}
+
+function setup_binary() {
+
+    binary_hide();
+    app.binary_copied_timeout = null;
+
+    document.getElementById("binary").addEventListener("click", function() {
+
+        const text = this.textContent || this.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+
+            if (app.binary_copied_timeout != null) {
+                clearTimeout(app.binary_copied_timeout);
+            }
+
+            document.getElementById("binary").classList.add("copied");
+
+            app.binary_copied_timeout = setTimeout(function() {
+                app.binary_copied_timeout = null;
+                document.getElementById("binary").classList.remove("copied");
+            }, 400);
+
+        });
+
+    });
 }
 
 function init_vars() {
@@ -108,6 +134,14 @@ function hilite(lineno, style) {
         app.editor.addLineClass(lineno - 1, "background", "highlight_" + style);
         app.hilite = lineno;
     }
+}
+
+function binary_show() {
+    document.getElementById("binary").style.display = "block";
+}
+
+function binary_hide() {
+    document.getElementById("binary").style.display = "none";
 }
 
 function indicator(status, error) {
@@ -163,6 +197,8 @@ function compile_background_finished(compiler) {
     if (compiler.error == null) {
 
         indicator("okay", null);
+        binary_fill(compiler);
+        binary_show();
 
         if (app.compile_indicator_timeout != null) {
             clearTimeout(app.compile_indicator_timeout);
@@ -180,6 +216,15 @@ function compile_background_finished(compiler) {
 
     }
 
+}
+
+function binary_fill(compiler) {
+
+    let div = document.getElementById("binary");
+    div.innerHTML = "";
+    for (const nibble of compiler.memory) {
+        div.innerHTML += "0" + (nibble.value.toString(16).toUpperCase()) + "\n";
+    }
 }
 
 function execute(mode) {

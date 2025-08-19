@@ -6,11 +6,10 @@
 
     <link rel="stylesheet" href="codemirror.min.css">
     <link rel="stylesheet" href="dracula.min.css">
-    <link rel="stylesheet" href="bjtcpu.css?ra">
+    <link rel="stylesheet" href="bjtcpu.css">
 
     <script src="codemirror.min.js"></script>
-    <script src="bjtcpu.js?ra"></script>
-
+    <script src="bjtcpu.js?asax"></script>
 </head>
 <body>
 
@@ -20,16 +19,39 @@
         <div id="editor-container">
 <textarea id="editor">
 start:
+    mvi a,1
     call sub
+    mvi a,2
     hlt
 sub:
-    mvi a,1
-    sta $222
+    mvi a,5
     ret
 
     .log sub, @end
 </textarea>
             <div id="indicator"></div>
+            <pre class="binary" id="binary">00
+00
+11
+22
+33
+11
+55
+77
+88
+99
+22
+44
+88
+55
+33
+55
+11
+45
+11
+55
+44
+</pre>
         </div>
         <div id="error">
             dsfsdf

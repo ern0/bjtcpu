@@ -1,6 +1,5 @@
 self.addEventListener("message", function(event) {
 
-console.log("----------------------------------")
     let compiler = new Compiler(event.data)
     compiler.compile();
 
@@ -218,7 +217,7 @@ class Compiler {
             "jn":       [0xE,  4,  0],
             "jp":       [0xF,  4,  0],
             //
-            "nop":      [null, 0,  0],
+            "nop":      [null, 4,  0],
             "hlt":      [null, 4,  0],
             "call":     [null, ((3 * 2) + (3 * 4) + (1 * 4)),  0],  // 3x mvi, 3x sta, 1x jmp => 22
             "ret":      [null, 4, 0],
@@ -238,6 +237,9 @@ class Compiler {
         if (this.error != null) return;
 
         this.compile_round_2();
+        if (this.error != null) return;
+
+        this.compile_round_3_resolve_calls();
         if (this.error != null) return;
 
         this.dump();
@@ -264,6 +266,9 @@ class Compiler {
 
         this.line_ptr = 0;
         this.last_ptr = 0;
+        this.sub_call_list = [];
+        this.sub_ret_list = {};
+        this.last_sub = null;
 
         for (let lineno in this.lines) {
 
@@ -273,6 +278,42 @@ class Compiler {
 
             this.line_ptr += line.size;
         }
+    }
+
+    compile_round_3_resolve_calls() {
+
+        for (const ref of this.sub_call_list) {
+
+            const sub_name = ref[0];
+            const call_address = ref[1];
+            const line = ref[2];
+            const ret_address = this.sub_ret_list[sub_name];
+            const cont_address = call_address + (3*2) + (3*4) + 4;
+
+            let mvi_address = call_address;
+            this.memory[mvi_address + 1] = new Nibble(this, low_nibble(cont_address), line);
+            let sta_address = mvi_address + 2;
+            this.memory[sta_address + 1] = new Nibble(this, low_nibble(ret_address + 1), line);
+            this.memory[sta_address + 2] = new Nibble(this, mid_nibble(ret_address + 1), line);
+            this.memory[sta_address + 3] = new Nibble(this, high_nibble(ret_address + 1), line);
+
+            mvi_address = sta_address + 4;
+            this.memory[mvi_address + 1] = new Nibble(this, mid_nibble(cont_address), line);
+            sta_address = mvi_address + 2;
+            this.memory[sta_address + 1] = new Nibble(this, low_nibble(ret_address + 2), line);
+            this.memory[sta_address + 2] = new Nibble(this, mid_nibble(ret_address + 2), line);
+            this.memory[sta_address + 3] = new Nibble(this, high_nibble(ret_address + 2), line);
+
+            mvi_address = sta_address + 4;
+            this.memory[mvi_address + 1] = new Nibble(this, high_nibble(cont_address), line);
+            sta_address = mvi_address + 2;
+            this.memory[sta_address + 1] = new Nibble(this, low_nibble(ret_address + 3), line);
+            this.memory[sta_address + 2] = new Nibble(this, mid_nibble(ret_address + 3), line);
+            this.memory[sta_address + 3] = new Nibble(this, high_nibble(ret_address + 3), line);
+
+            console.log("SUB:", sub_name, "call:", call_address.toString(16), "ret:", ret_address.toString(16))
+        }
+
     }
 
     set_mem_relative(ptr, nibble) {
@@ -502,6 +543,7 @@ class Line {
 
         this.compiler = compiler;
         this.size = 0;
+        this.label = null;
     }
 
     report_error(message) {
@@ -662,6 +704,7 @@ class Line {
 
     round2_proc_instr_macro() {
 
+        if (this.instr_eff == "nop") this.round2_proc_isntr_macro_nop();
         if (this.instr_eff == "hlt") this.round2_proc_isntr_macro_hlt();
         if (this.instr_eff == "call") this.round2_proc_instr_macro_call();
         if (this.instr_eff == "ret") this.round2_proc_instr_macro_ret();
@@ -670,6 +713,12 @@ class Line {
 
     get_opcode_by_name(name) {
         return this.compiler.machine_instr_list[name][0];
+    }
+
+    round2_proc_isntr_macro_nop() {
+
+        this.add_instruction(this.get_opcode_by_name("jmp"));
+        this.add_address(this.compiler.line_ptr + 4);
     }
 
     round2_proc_isntr_macro_hlt() {
@@ -681,35 +730,44 @@ class Line {
     round2_proc_instr_macro_call() {
 
         const target_address = this.compiler.get_valid_target_address(this, "call");
-        const PLACEHOLDER = 0
-        const return_address = this.compiler.line_ptr + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
+        if (this.compiler.error != null) return;
 
-        this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(low_nibble(return_address));          // 1
+        const target_lc = this.args[0].toLowerCase();
+        this.compiler.sub_ret_list[target_lc] = null;
+        this.compiler.sub_call_list.push([target_lc, this.compiler.line_ptr, this]);
+        this.compiler.last_sub = target_lc;
+        const PLACEHOLDER = 0;
+
+        const return_address = this.compiler.line_ptr + (
+            1+1+1+3 +
+            1+1+1+3 +
+            1+1+1+3 +
+            1+3
+        );
+
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(low_nibble(return_address));        // 1
         this.offset += 2;
-
-        this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER);                           // 3
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                         // 3
         this.offset += 4;
 
-        this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(mid_nibble(return_address));          // 1
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(mid_nibble(return_address));        // 1
         this.offset += 2;
-
-        this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER);                          // 3
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                         // 3
         this.offset += 4;
 
-        this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(high_nibble(return_address));         // 1
+        this.add_instruction(this.get_opcode_by_name("mvi"));  // 1
+        this.add_immediate(high_nibble(return_address));       // 1
         this.offset += 2;
-
-        this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER);                           // 3
+        this.add_instruction(this.get_opcode_by_name("sta"));  // 1
+        this.add_address(PLACEHOLDER);                         // 3
         this.offset += 4;
 
-        this.add_instruction(this.get_opcode_by_name("jmp"));    // 1
-        this.add_address(target_address);                        // 3
+        this.add_instruction(this.get_opcode_by_name("jmp"));  // 1
+        this.add_address(target_address);                      // 3
     }
 
     round2_proc_instr_macro_ret() {
@@ -718,6 +776,11 @@ class Line {
 
         this.add_instruction(this.get_opcode_by_name("jmp"));
         this.add_address(PLACEHOLDER);
+
+        if (this.compiler.last_sub != null) {
+            this.compiler.sub_ret_list[this.compiler.last_sub] = this.compiler.line_ptr;
+            this.compiler.last_sub = null;
+        }
     }
 
     round2_proc_instr_pseudo_data(arg_size) {
@@ -842,5 +905,6 @@ class Nibble {
         this.compiler = compiler;
         this.value = value;
         this.line = line;
+        this.label_first_ret = null;
     }
 }

@@ -60,3 +60,20 @@ h1 {
 .highlight_error {
     background-color: #993333;
 }
+
+.binary {
+    text-align: center;
+    position: absolute;
+    bottom: -5vw; right: 1vw;
+    border: 2px solid #333333;
+    background-color: #ffffff;
+    width: 5vw;
+    resize: none;
+    overflow-y: hidden;
+    height: auto;
+    max-height: 35vw;
+}
+
+.copied {
+    background-color: #dddddd;
+}

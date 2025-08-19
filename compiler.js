@@ -135,17 +135,39 @@ class Compiler {
         // console.log(this.symbols);
         // console.groupEnd();
 
-        console.group("==== memory ====");
-        console.log(this.memory);
-        console.groupEnd();
+        // console.group("==== memory ====");
+        // console.log(this.memory);
+        // console.groupEnd();
 
-        // for (let ptr = 0; ptr < this.pc; ptr++) {
-        //     console.log(ptr + ":", "$" + this.memory[ptr].value.toString(16));
-        // }
+        let ptr = 0;
+        while (true) {
+
+            const instr = this.memory[ptr].value;
+            let line = ptr.toString(16).padStart(3, "0").toUpperCase();
+            line += ":  " + instr.toString(16) + " ";
+            ptr++;
+
+            let width = 3;
+            if (instr == 0) width = 1;
+
+            for (let i = 0; i < width; i++) {
+                const value = this.memory[ptr].value;
+                ptr++;
+                line += " " + value.toString(16);
+            }
+
+            console.log(line);
+
+            if (ptr >= this.line_ptr) break;
+        }
+
+        let line = ptr.toString(16).padStart(3, "0").toUpperCase();
+        console.log(line + ":  <EOF>");
+
     }
 
     add_label(line) {
-        this.add_symbol("label", line.label, 3, this.pc, line);
+        this.add_symbol("label", line.label, 3, this.line_ptr, line);
     }
 
     add_symbol(type, orig_name, size, value, line) {
@@ -197,6 +219,7 @@ class Compiler {
             "jp":       [0xF,  4,  0],
             //
             "nop":      [null, 0,  0],
+            "hlt":      [null, 4,  0],
             "call":     [null, ((3 * 2) + (3 * 4) + (1 * 4)),  0],  // 3x mvi, 3x sta, 1x jmp => 22
             "ret":      [null, 4, 0],
             //
@@ -222,7 +245,7 @@ class Compiler {
 
     compile_round_1() {
 
-        this.pc = 0;
+        this.line_ptr = 0;
 
         let text = this.packet["source"].split("\n");
         for (let index in text) {
@@ -233,14 +256,14 @@ class Compiler {
             if (line.error != null) return;
 
             this.lines[lineno] = line;
-            this.pc += line.size;
+            this.line_ptr += line.size;
         }
     }
 
     compile_round_2() {
 
-        this.pc = 0;
-        this.last_offset = 0;
+        this.line_ptr = 0;
+        this.last_ptr = 0;
 
         for (let lineno in this.lines) {
 
@@ -248,13 +271,15 @@ class Compiler {
             line.round2();
             if (line.error != null) break;
 
-            this.pc += line.size;
+            this.line_ptr += line.size;
         }
     }
 
-    set_mem_relative(offset, nibble) {
-        this.memory[this.pc + offset] = nibble;
-        this.last_offset = offset;
+    set_mem_relative(ptr, nibble) {
+
+        const address = this.line_ptr + ptr;
+        this.memory[address] = nibble;
+        this.last_ptr = ptr;
     }
 
     calculate_expression(line, expr, size, negative_allowed) {
@@ -396,8 +421,8 @@ class Compiler {
 
         const token_lc = token.toLowerCase();
 
-        if (token_lc == "@line") return this.pc;
-        if (token_lc == "@pc") return this.pc + this.last_offset + 1;
+        if (token_lc == "@line") return this.line_ptr;
+        if (token_lc == "@pc") return this.line_ptr + this.last_set_ptr + 1;
         if (token_lc == "@end") return this.memory.length;
 
         this.report_error("undefined system variable: " + token, line);
@@ -490,6 +515,7 @@ class Line {
         this.lineno = lineno;
         this.original = text;
         this.size = 0;
+        this.offset = 0;
 
         this.parts = split_by(this.original.trim(), " ");
         if (this.parts.length == 0) return;
@@ -586,6 +612,7 @@ class Line {
 
         const instr_info = this.compiler.machine_instr_list[this.instr_eff];
         if (typeof(instr_info) == "undefined") return;
+        this.offset = 0;
         const opcode = instr_info[0];
         const arg_size = instr_info[2];
 
@@ -635,49 +662,54 @@ class Line {
 
     round2_proc_instr_macro() {
 
+        if (this.instr_eff == "hlt") this.round2_proc_isntr_macro_hlt();
         if (this.instr_eff == "call") this.round2_proc_instr_macro_call();
         if (this.instr_eff == "ret") this.round2_proc_instr_macro_ret();
         if (this.compiler.error != null) return;
     }
 
     get_opcode_by_name(name) {
-
         return this.compiler.machine_instr_list[name][0];
+    }
+
+    round2_proc_isntr_macro_hlt() {
+
+        this.add_instruction(this.get_opcode_by_name("jmp"));
+        this.add_address(this.compiler.line_ptr);
     }
 
     round2_proc_instr_macro_call() {
 
         const target_address = this.compiler.get_valid_target_address(this, "call");
         const PLACEHOLDER = 0
-        const return_address = this.pc + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
+        const return_address = this.compiler.line_ptr + (1+1+1+3 + 1+1+1+3 + 1+1+1+3 + 1+3);
 
-        let offset = 0;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(low_nibble(return_address), offset);  // 1
+        this.add_immediate(low_nibble(return_address));          // 1
+        this.offset += 2;
 
-        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER, offset);                   // 3
+        this.add_address(PLACEHOLDER);                           // 3
+        this.offset += 4;
 
-        offset += 4;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(mid_nibble(return_address), offset);  // 1
+        this.add_immediate(mid_nibble(return_address));          // 1
+        this.offset += 2;
 
-        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER, offset);                   // 3
+        this.add_address(PLACEHOLDER);                          // 3
+        this.offset += 4;
 
-        offset += 4;
         this.add_instruction(this.get_opcode_by_name("mvi"));    // 1
-        this.add_immediate(high_nibble(return_address), offset); // 1
+        this.add_immediate(high_nibble(return_address));         // 1
+        this.offset += 2;
 
-        offset += 2;
         this.add_instruction(this.get_opcode_by_name("sta"));    // 1
-        this.add_address(PLACEHOLDER, offset);                   // 3
+        this.add_address(PLACEHOLDER);                           // 3
+        this.offset += 4;
 
-        offset += 4;
         this.add_instruction(this.get_opcode_by_name("jmp"));    // 1
-        this.add_address(target_address, offset);                // 3
+        this.add_address(target_address);                        // 3
     }
 
     round2_proc_instr_macro_ret() {
@@ -690,7 +722,6 @@ class Line {
 
     round2_proc_instr_pseudo_data(arg_size) {
 
-        let offset = 0;
         for (const arg_value of this.args) {
 
             const value_list = this.compiler.calculate_expression(this, arg_value, arg_size, true);
@@ -705,11 +736,11 @@ class Line {
                     const digit_value = (value >> shift) & 0x0f;
                     shift += 4;
                     const nibble = new Nibble(this.compiler, digit_value, this);
-                    this.compiler.set_mem_relative(offset + digit_pos, nibble);
+                    this.compiler.set_mem_relative(this.offset + digit_pos, nibble);
 
                 } // for digit
 
-                offset += arg_size;
+                this.offset += arg_size;
             } // for value
         } // for arg
 
@@ -770,34 +801,28 @@ class Line {
         }
     }
 
-    add_instruction(opcode, offset) {
-
-        if (typeof(offset) == "undefined") offset = 0;
+    add_instruction(opcode) {
 
         let nibble = new Nibble(this.compiler, opcode, this);
-        this.compiler.set_mem_relative(0 + offset, nibble);
+        this.compiler.set_mem_relative(0 + this.offset, nibble);
     }
 
     add_immediate(value, offset) {
 
-        if (typeof(offset) == "undefined") offset = 0;
-
         const nibble = new Nibble(this.compiler, value, this);
-        this.compiler.set_mem_relative(1 + offset, nibble);
+        this.compiler.set_mem_relative(1 + this.offset, nibble);
     }
 
     add_address(address, offset) {
 
-        if (typeof(offset) == "undefined") offset = 0;
-
         const low = new Nibble(this.compiler, low_nibble(address), this);
-        this.compiler.set_mem_relative(1 + offset, low);
+        this.compiler.set_mem_relative(1 + this.offset, low);
 
         const mid = new Nibble(this.compiler, mid_nibble(address), this);
-        this.compiler.set_mem_relative(2 + offset, mid);
+        this.compiler.set_mem_relative(2 + this.offset, mid);
 
         const high = new Nibble(this.compiler, high_nibble(address), this);
-        this.compiler.set_mem_relative(3 + offset, high);
+        this.compiler.set_mem_relative(3 + this.offset, high);
     }
 
 } // class Line

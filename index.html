@@ -20,8 +20,13 @@
         <div id="editor-container">
 <textarea id="editor">
 start:
-    jmp sub
+    call sub
+    hlt
 sub:
+    mvi a,1
+    sta $222
+    ret
+
     .log sub, @end
 </textarea>
             <div id="indicator"></div>
